@@ -1,7 +1,7 @@
 import sys
 import torch
 from net import Net
-from models import ResNet
+from models.resnet_1d import ResNet
 from skorch.callbacks import ProgressBar, LRScheduler
 from callbacks import IOU, MyEpochScoring, MyCheckpoint
 from skorch.dataset import CVSplit
@@ -29,10 +29,13 @@ def initialize_net():
         #     dirname=net_location + "best_iou/",
         #     monitor=lambda net: net.history[-1, "iou_best"],
         # ),
-        LRScheduler(policy=ReduceLROnPlateau, monitor="valid_loss"),
+        LRScheduler(policy=ReduceLROnPlateau, monitor="valid_loss", patience=5),
     ]
     net = Net(
         module=ResNet,
+        module__resnet_layer="resnet6",
+        module__num_units=64,
+        module__dropout=0.2,
         criterion=torch.nn.BCEWithLogitsLoss,
         optimizer=torch.optim.Adam,
         lr=0.01,
@@ -62,6 +65,8 @@ if __name__ == "__main__":
         print("Please provide a description for the model")
         print("Eg: python main.py 'Resnet-18 with batch size 4'")
         exit(1)
+
+    # TODO Log the description
 
     net = initialize_net()
     dataset = initialize_dataset()

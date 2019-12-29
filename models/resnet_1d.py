@@ -156,25 +156,26 @@ def resnet34(**kwargs):
 
 
 def resnet66(**kwargs):
-    return MakeResNet([3, 8, 18, 3], [3, 3], **kwargs)
+    return MakeResNet([3, 8, 18, 3], [9, 9], **kwargs)
 
 
 def resnet98(**kwargs):
-    return MakeResNet([3, 12, 30, 3], [3, 3], **kwargs)
+    return MakeResNet([3, 12, 30, 3], [11, 11], **kwargs)
 
 
 class ResNet(nn.Module):
-    def __init__(self):
+    def __init__(self, resnet_layer="resnet6", num_units=64, dropout=0.2):
         super(ResNet, self).__init__()
-        self.reslay = resnet6()
-        self.fc1 = nn.Linear(512, 64)
+        self.resnet_layer = locals()[resnet_layer]
+        self.fc1 = nn.Linear(512, num_units)
         self.act1 = nn.ReLU()
-        self.fc2 = nn.Linear(64, 1)
+        self.dropout = nn.Dropout(dropout)
+        self.fc2 = nn.Linear(num_units, 1)
         # self.act2 = nn.Sigmoid()
 
     def forward(self, X, lengths, **kwargs):
         # [Batch, 21, Max_length] -> [Batch, 512, Max_length]
-        X = self.reslay(X)
+        X = self.resnet_layer(X)
 
         # [Batch, 512, Max_length] -> [Batch * Max_length, 512]
         X = X.transpose(1, 2)
@@ -183,6 +184,7 @@ class ResNet(nn.Module):
         # Run through linear and activation layers
         X = self.fc1(X)
         X = self.act1(X)
+        X = self.dropout(X)
         X = self.fc2(X)
         # X = self.act2(X)
 
