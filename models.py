@@ -6,7 +6,7 @@ class BasicBlock(nn.Module):
         self,
         in_channels,
         out_channels,
-        kernel_size=[17, 17],
+        kernel_size=[3, 3],
         norm_layer=None,
         downsample=None,
     ):
@@ -144,23 +144,23 @@ def resnet6(**kwargs):
 
 
 def resnet14(**kwargs):
-    return MakeResNet([1, 2, 2, 1], [17, 17], **kwargs)
+    return MakeResNet([1, 2, 2, 1], [3, 3], **kwargs)
 
 
 def resnet18(**kwargs):
-    return MakeResNet([2, 2, 2, 2], [17, 17], **kwargs)
+    return MakeResNet([2, 2, 2, 2], [5, 5], **kwargs)
 
 
 def resnet34(**kwargs):
-    return MakeResNet([3, 4, 6, 3], [17, 17], **kwargs)
+    return MakeResNet([3, 4, 6, 3], [7, 7], **kwargs)
 
 
 def resnet66(**kwargs):
-    return MakeResNet([3, 8, 18, 3], [17, 17], **kwargs)
+    return MakeResNet([3, 8, 18, 3], [3, 3], **kwargs)
 
 
 def resnet98(**kwargs):
-    return MakeResNet([3, 12, 30, 3], [17, 17], **kwargs)
+    return MakeResNet([3, 12, 30, 3], [3, 3], **kwargs)
 
 
 class ResNet(nn.Module):
