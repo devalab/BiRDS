@@ -1,6 +1,7 @@
 import skorch
 import torch
 from torch.nn.functional import binary_cross_entropy_with_logits
+
 from constants import DEVICE
 
 # from skorch.utils import to_numpy
@@ -26,7 +27,7 @@ class Net(skorch.NeuralNet):
         loss = 0
         for i in range(batch_size):
             loss += binary_cross_entropy_with_logits(
-                y_pred[i, : lengths[i]], y_true[i, : lengths[i]], pos_weight=pos_weight
+                y_pred[i, : lengths[i]], y_true[i, : lengths[i]]
             )
         loss /= batch_size
         return loss

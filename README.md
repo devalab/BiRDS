@@ -1,1 +1,8 @@
-# protein-binding-site-prediction
+# Protein Binding Site Prediction
+
+## Dependencies
+
+- pytorch
+- skorch
+- fire
+- numpydoc

@@ -1,5 +1,5 @@
-from skorch.callbacks import EpochScoring, Checkpoint
 import torch
+from skorch.callbacks import Checkpoint, EpochScoring
 
 SMOOTH = 1e-6
 
@@ -16,11 +16,12 @@ def IOU(net, X, y):
         yp = net.evaluation_step(Xi, training=False)
         yp = torch.sigmoid(yp)
         yp = (yp > 0.5).int()
+        yt = yt.int()
         lengths = Xi["lengths"]
         batch_size = len(lengths)
         for i in range(batch_size):
-            intersection += (yp & yt.int()).float().sum()
-            union += (yp | yt.int()).float().sum()
+            intersection += (yp[i, : lengths[i]] & yt[i, : lengths[i]]).float().sum()
+            union += (yp[i, : lengths[i]] | yt[i, : lengths[i]]).float().sum()
     iou = (intersection + SMOOTH) / (union + SMOOTH)
 
     return 100.0 * iou.item()

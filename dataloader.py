@@ -3,7 +3,8 @@ from os import listdir
 import numpy as np
 import torch
 from torch.utils.data import Dataset
-from constants import DEVICE, AA_ID_DICT
+
+from constants import AA_ID_DICT, DEVICE
 
 
 class PDBbind(Dataset):
@@ -22,16 +23,6 @@ class PDBbind(Dataset):
 
     def __len__(self):
         return len(self.filenames)
-
-
-def generate_target(data):
-    lengths = data["length"]
-    labels = data["labels"]
-    batch_size = len(lengths)
-    target = torch.zeros(batch_size, lengths[0], device=DEVICE, dtype=torch.float32)
-    for i in range(batch_size):
-        target[i, : lengths[i]] = torch.from_numpy(labels[i])
-    return target
 
 
 def generate_input(data):
@@ -53,6 +44,16 @@ def generate_input(data):
             transformed_sequence[i][residue][j] = 1.0
 
     return transformed_sequence
+
+
+def generate_target(data):
+    lengths = data["length"]
+    labels = data["labels"]
+    batch_size = len(lengths)
+    target = torch.zeros(batch_size, lengths[0], device=DEVICE, dtype=torch.float32)
+    for i in range(batch_size):
+        target[i, : lengths[i]] = torch.from_numpy(labels[i])
+    return target
 
 
 def PDBbind_collate_fn(samples):
