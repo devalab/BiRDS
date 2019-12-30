@@ -1,3 +1,5 @@
+from os import path
+
 import torch
 from skorch.callbacks import Checkpoint, EpochScoring
 
@@ -68,7 +70,7 @@ class MyCheckpoint(Checkpoint):
         # Save the json file normally but also include a log.txt for easy viewing
         super().save_model(net)
         if self.f_history is not None:
-            f = self.dirname + "log.txt"
+            f = path.join(self.dirname, "log.txt")
             losses_history = {}
             scores_history = {}
             if self.monitor:

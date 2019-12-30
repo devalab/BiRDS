@@ -1,4 +1,4 @@
-from os import listdir
+from os import listdir, path
 
 import numpy as np
 import torch
@@ -15,7 +15,9 @@ class PDBbind(Dataset):
         self.filenames = listdir(foldername)
 
     def __getitem__(self, index):
-        data = np.load(self.foldername + self.filenames[index], allow_pickle=True)
+        data = np.load(
+            path.join(self.foldername, self.filenames[index]), allow_pickle=True
+        )
         protein = data["protein"].item()
         protein.update(data["metadata"].item())
         sample = dict((k, protein[k]) for k in self.data_needed if k in protein)

@@ -1,3 +1,4 @@
+from os import path
 from datetime import datetime
 
 import torch
@@ -31,22 +32,23 @@ NET_DEFAULTS = {
 
 def initialize_net(**kwargs):
     net_name = datetime.now().strftime("%Y-%m-%d_%H_%M_%S")
-    net_location = PROJECT_FOLDER + "outputs/" + net_name + "/"
+    net_location = path.join(PROJECT_FOLDER, "outputs", net_name)
     callbacks = [
         ProgressBar(),
         MyEpochScoring(scoring=IOU, lower_is_better=False),
-        MyCheckpoint(
-            dirname=net_location + "best_valid_loss/", monitor="valid_loss_best"
-        ),
-        MyCheckpoint(dirname=net_location + "latest/", monitor=None),
-        # MyCheckpoint(
-        #     dirname=net_location + "best_iou/",
-        #     monitor=lambda net: net.history[-1, "IOU_best"],
-        # ),
+        MyCheckpoint(dirname=path.join(net_location, "latest"), monitor=None),
         LRScheduler(
             policy=ReduceLROnPlateau, monitor="valid_loss", patience=5, verbose=1
         ),
     ]
+    monitors = ["best_valid_loss", "IOU_best"]
+    for monitor in monitors:
+        callbacks.append(
+            MyCheckpoint(
+                dirname=path.join(net_location, monitor),
+                monitor=lambda net: net.history[-1, monitor],
+            )
+        )
     net = Net(
         module=ResNet,
         module__resnet_layer="resnet6",
@@ -73,7 +75,7 @@ def initialize_dataset():
 def main(**kwargs):
     dataset = initialize_dataset()
     net = initialize_net(**kwargs)
-    copy_code("./", net.location + "code/")
+    copy_code("./", path.join(net.location + "code"))
     net.fit(dataset, y=None)
 
 

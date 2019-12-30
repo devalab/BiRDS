@@ -32,7 +32,7 @@ AA_ID_DICT = {
 # to regenerate the preprocessed data
 FORCE_PREPROCESSING_OVERWRITE = False
 
-PROJECT_FOLDER = environ["PWD"] + "/"
+PROJECT_FOLDER = environ["PWD"]
 
 # Which device to use for tensor computations
 DEVICE = device("cpu")
