@@ -1,8 +1,9 @@
-import sys
 from datetime import datetime
 
 import torch
+from fire import Fire
 from skorch.callbacks import LRScheduler, ProgressBar
+from skorch.cli import parse_args
 from skorch.dataset import CVSplit
 from torch.optim.lr_scheduler import ReduceLROnPlateau
 
@@ -14,8 +15,21 @@ from models.transformer import Transformer  # noqa: F401
 from net import Net
 from utils import copy_code
 
+NET_DEFAULTS = {
+    "optimizer": torch.optim.Adam,
+    "lr": 0.01,
+    "max_epochs": 100,
+    "batch_size": 1,
+    "train_split": CVSplit(10, random_state=42),
+    "warm_start": False,
+    "verbose": 1,
+    "device": DEVICE,
+    "iterator_train__collate_fn": PDBbind_collate_fn,
+    "iterator_valid__collate_fn": PDBbind_collate_fn,
+}
 
-def initialize_net():
+
+def initialize_net(**kwargs):
     net_name = datetime.now().strftime("%Y-%m-%d_%H_%M_%S")
     net_location = PROJECT_FOLDER + "outputs/" + net_name + "/"
     callbacks = [
@@ -27,31 +41,22 @@ def initialize_net():
         MyCheckpoint(dirname=net_location + "latest/", monitor=None),
         # MyCheckpoint(
         #     dirname=net_location + "best_iou/",
-        #     monitor=lambda net: net.history[-1, "iou_best"],
+        #     monitor=lambda net: net.history[-1, "IOU_best"],
         # ),
         LRScheduler(
             policy=ReduceLROnPlateau, monitor="valid_loss", patience=5, verbose=1
         ),
     ]
     net = Net(
-        # module=Transformer,
         module=ResNet,
         module__resnet_layer="resnet6",
         module__num_units=64,
         module__dropout=0.2,
-        criterion=torch.nn.BCELoss,
-        optimizer=torch.optim.Adam,
-        lr=0.01,
-        max_epochs=100,
-        batch_size=1,
-        train_split=CVSplit(10, random_state=42),
+        criterion=torch.nn.BCEWithLogitsLoss,
         callbacks=callbacks,
-        warm_start=True,
-        verbose=1,
-        device=DEVICE,
-        iterator_train__collate_fn=PDBbind_collate_fn,
-        iterator_valid__collate_fn=PDBbind_collate_fn,
     )
+    parsed_args = parse_args(kwargs, defaults=NET_DEFAULTS)
+    net = parsed_args(net)
     net.name = net_name
     net.location = net_location
     return net
@@ -65,16 +70,12 @@ def initialize_dataset():
     return dataset
 
 
-if __name__ == "__main__":
-    if len(sys.argv) != 2:
-        print("Please provide a description for the model")
-        print("Eg: python main.py 'Resnet-18 with batch size 4'")
-        exit(1)
-
-    # TODO Log the description
-
-    net = initialize_net()
+def main(**kwargs):
     dataset = initialize_dataset()
+    net = initialize_net(**kwargs)
     copy_code("./", net.location + "code/")
-
     net.fit(dataset, y=None)
+
+
+if __name__ == "__main__":
+    Fire(main)
