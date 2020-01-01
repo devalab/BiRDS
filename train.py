@@ -67,7 +67,7 @@ def initialize_net(**kwargs):
 def initialize_dataset():
     data_needed = ["pdb_id", "sequence", "length", "labels"]
     dataset = PDBbind(
-        PROJECT_FOLDER + "data/PDBbind/preprocessed/unique2/", data_needed
+        path.join(PROJECT_FOLDER, "data/PDBbind/preprocessed/unique2"), data_needed
     )
     return dataset
 
@@ -75,7 +75,7 @@ def initialize_dataset():
 def main(**kwargs):
     dataset = initialize_dataset()
     net = initialize_net(**kwargs)
-    copy_code("./", path.join(net.location + "code"))
+    copy_code("./", path.join(net.location, "code"))
     net.fit(dataset, y=None)
 
 

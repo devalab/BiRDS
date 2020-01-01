@@ -28,10 +28,6 @@ AA_ID_DICT = {
     "X": 20,
 }
 
-# Deletes already preprocessed data in and uses the raw data
-# to regenerate the preprocessed data
-FORCE_PREPROCESSING_OVERWRITE = False
-
 PROJECT_FOLDER = environ["PWD"]
 
 # Which device to use for tensor computations
