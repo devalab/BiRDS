@@ -6,11 +6,12 @@ from fire import Fire
 from skorch.callbacks import LRScheduler, ProgressBar
 from skorch.cli import parse_args
 from skorch.dataset import CVSplit
+from skorch.helper import predefined_split
 from torch.optim.lr_scheduler import ReduceLROnPlateau
 
 from callbacks import IOU, MyCheckpoint, MyEpochScoring
 from constants import DEVICE, PROJECT_FOLDER
-from dataloader import PDBbind, PDBbind_collate_fn
+from dataloader import PDBbind, DeepCSeqSite, collate_fn  # noqa: F401
 from models.resnet_1d import ResNet  # noqa: F401
 from models.transformer import Transformer  # noqa: F401
 from net import Net
@@ -25,8 +26,8 @@ NET_DEFAULTS = {
     "warm_start": False,
     "verbose": 1,
     "device": DEVICE,
-    "iterator_train__collate_fn": PDBbind_collate_fn,
-    "iterator_valid__collate_fn": PDBbind_collate_fn,
+    "iterator_train__collate_fn": collate_fn,
+    "iterator_valid__collate_fn": collate_fn,
 }
 
 
@@ -65,18 +66,19 @@ def initialize_net(**kwargs):
 
 
 def initialize_dataset():
-    data_needed = ["pdb_id", "sequence", "length", "labels"]
-    dataset = PDBbind(
-        path.join(PROJECT_FOLDER, "data/PDBbind/preprocessed/unique2"), data_needed
-    )
-    return dataset
+    # dataset = PDBbind(
+    #     path.join(PROJECT_FOLDER, "data/PDBbind/preprocessed/unique2")
+    # )
+    train_data = DeepCSeqSite(path.join(PROJECT_FOLDER, "data/DeepCSeqSite/Train.dat"))
+    valid_data = DeepCSeqSite(path.join(PROJECT_FOLDER, "data/DeepCSeqSite/Val.dat"))
+    return train_data, valid_data
 
 
 def main(**kwargs):
-    dataset = initialize_dataset()
-    net = initialize_net(**kwargs)
+    train_data, val_data = initialize_dataset()
+    net = initialize_net(train_split=predefined_split(val_data), **kwargs)
     copy_code("./", path.join(net.location, "code"))
-    net.fit(dataset, y=None)
+    net.fit(train_data, y=None)
 
 
 if __name__ == "__main__":
