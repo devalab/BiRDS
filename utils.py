@@ -1,4 +1,4 @@
-import os
+from os import path, makedirs, system
 
 import torch
 
@@ -7,9 +7,9 @@ from constants import DEVICE
 
 def copy_code(from_location, to_location):
     # Copy .sh and .py files
-    if not os.path.exists(to_location):
-        os.makedirs(to_location)
-    os.system(
+    if not path.exists(to_location):
+        makedirs(to_location)
+    system(
         "rsync -mar --exclude='outputs' --include='*/' "
         + "--include='*\.py' --include='*\.sh' --exclude='*' "
         + from_location
