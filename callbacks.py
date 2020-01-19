@@ -2,6 +2,7 @@ from os import path
 
 import torch
 from skorch.callbacks import Checkpoint, EpochScoring
+from sklearn.metrics import matthews_corrcoef, jaccard_score
 
 SMOOTH = 1e-6
 
@@ -11,22 +12,35 @@ SMOOTH = 1e-6
 def IOU(net, X, y):
     # y will be None
     iterator = net.get_iterator(X, training=False)
-    intersection = 0
-    union = 0
+    iou = 0.0
     for data in iterator:
         Xi, yt = data
         yp = net.evaluation_step(Xi, training=False)
         yp = torch.sigmoid(yp)
-        yp = (yp > 0.5).int()
-        yt = yt.int()
+        yp = (yp > 0.5).bool().cpu()
+        yt = yt.bool().cpu()
         lengths = Xi["lengths"]
         batch_size = len(lengths)
         for i in range(batch_size):
-            intersection += (yp[i, : lengths[i]] & yt[i, : lengths[i]]).float().sum()
-            union += (yp[i, : lengths[i]] | yt[i, : lengths[i]]).float().sum()
-    iou = (intersection + SMOOTH) / (union + SMOOTH)
+            iou += jaccard_score(yt[i, : lengths[i]], yp[i, : lengths[i]])
+    return iou / iterator.__len__()
 
-    return 100.0 * iou.item()
+
+def MCC(net, X, y):
+    # y will be None
+    iterator = net.get_iterator(X, training=False)
+    mcc = 0.0
+    for data in iterator:
+        Xi, yt = data
+        yp = net.evaluation_step(Xi, training=False)
+        yp = torch.sigmoid(yp)
+        yp = (yp > 0.5).bool().cpu()
+        yt = yt.bool().cpu()
+        lengths = Xi["lengths"]
+        batch_size = len(lengths)
+        for i in range(batch_size):
+            mcc += matthews_corrcoef(yt[i, : lengths[i]], yp[i, : lengths[i]])
+    return mcc / iterator.__len__()
 
 
 class MyEpochScoring(EpochScoring):
@@ -51,7 +65,7 @@ class MyCheckpoint(Checkpoint):
         self,
         dirname,
         monitor,
-        log_scores=["IOU"],
+        log_scores=["IOU", "MCC"],
         f_params="model.pth",
         f_optimizer="optimizer.pth",
         f_history="history.json",

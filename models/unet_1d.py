@@ -4,6 +4,7 @@ import torch.nn.functional as F
 
 from constants import DEVICE
 
+# Padding might be causing a problem
 
 class UNetConvBlock(nn.Module):
     def __init__(self, in_size, out_size, padding, batch_norm):
@@ -117,15 +118,15 @@ class UNet(nn.Module):
 
         self.last = nn.Conv1d(prev_channels, n_classes, kernel_size=1)
 
-    def forward(self, x, lengths):
+    def forward(self, X, lengths, **kwargs):
         blocks = []
         for i, down in enumerate(self.down_path):
-            x = down(x)
+            X = down(X)
             if i != len(self.down_path) - 1:
-                blocks.append(x)
-                x = F.avg_pool1d(x, 2)
+                blocks.append(X)
+                X = F.max_pool1d(X, 2)
 
         for i, up in enumerate(self.up_path):
-            x = up(x, blocks[-i - 1])
+            X = up(X, blocks[-i - 1])
 
-        return self.last(x)
+        return self.last(X).view(-1, lengths[0])

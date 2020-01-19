@@ -2,6 +2,7 @@ import math
 
 import torch
 import torch.nn as nn
+from constants import DEVICE, AA_ID_DICT
 
 
 class PositionalEncoding(nn.Module):
@@ -15,7 +16,10 @@ class PositionalEncoding(nn.Module):
             torch.arange(0, d_model, 2).float() * (-math.log(10000.0) / d_model)
         )
         pe[:, 0::2] = torch.sin(position * div_term)
-        pe[:, 1::2] = torch.cos(position * div_term)
+        if len(div_term) % 2:
+            pe[:, 1::2] = torch.cos(position * div_term[:-1])
+        else:
+            pe[:, 1::2] = torch.cos(position * div_term)
         pe = pe.unsqueeze(0).transpose(0, 1)
         self.register_buffer("pe", pe)
 
@@ -25,30 +29,46 @@ class PositionalEncoding(nn.Module):
 
 
 class Transformer(nn.Module):
-    def __init__(self, feat_vec_len, n_heads=4, num_transformer_layers=2):
+    def __init__(
+        self, feat_vec_len, ntoken=21, nhead=3, nhid=512, nlayers=2, dropout=0.5
+    ):
+        # ntoken: number of amino acids
+        # nhead: the number of heads in the multiheadattention models
+        # nhid: the dimension of the feedforward network model in nn.TransformerEncoder
+        # nlayers: the number of nn.TransformerEncoderLayer in nn.TransformerEncoder
         super(Transformer, self).__init__()
-        self.fc1 = nn.Linear(feat_vec_len, 64)
-        self.positional_encoding = PositionalEncoding(64)
-        transformer_encoder_layer = nn.TransformerEncoderLayer(64, n_heads)
-        self.transformer = nn.TransformerEncoder(
-            transformer_encoder_layer, num_transformer_layers
-        )
-        self.fc2 = nn.Linear(64, 1)
+        self.src_mask = None
+        self.pos_encoder = PositionalEncoding(feat_vec_len, dropout)
+        encoder_layers = nn.TransformerEncoderLayer(feat_vec_len, nhead, nhid, dropout)
+        self.transformer_encoder = nn.TransformerEncoder(encoder_layers, nlayers)
+        # Final output which gives probability of the AA being in the binding site or not
+        self.decoder = nn.Linear(feat_vec_len, 1)
 
-    def forward(self, X, lengths, *args):
-        # batch_size = len(lengths)
-        # mask = torch.zeros(batch_size, lengths[0], device=DEVICE, dtype=torch.bool)
-        # for i in range(len(lengths)):
-        #     mask[i, : lengths[i]] = 1
+        self.init_weights()
 
-        # [Batch, feat_vec_len, Max_length] -> [Batch, Max_length, 64]
-        X = torch.transpose(X, 1, 2)
-        X = self.fc1(X)
-        X = self.positional_encoding(X)
-        X = self.transformer(X)
+    # def _generate_square_subsequent_mask(self, sz):
+    #     mask = (torch.triu(torch.ones(sz, sz)) == 1).transpose(0, 1)
+    #     mask = (
+    #         mask.float()
+    #         .masked_fill(mask == 0, float("-inf"))
+    #         .masked_fill(mask == 1, float(0.0))
+    #     )
+    #     return mask
 
-        # Run through linear and activation layers
-        X = self.fc2(X)
-        X = X.view(-1, lengths[0])
+    def init_weights(self):
+        initrange = 0.1
+        self.decoder.bias.data.zero_()
+        self.decoder.weight.data.uniform_(-initrange, initrange)
 
-        return X
+    def forward(self, X, lengths, **kwargs):
+        # if self.src_mask is None or self.src_mask.size(0) != len(X):
+        #     mask = self._generate_square_subsequent_mask(len(X)).to(DEVICE)
+        #     self.src_mask = mask
+
+        # [Batch, 21, Max_length] -> [Batch, Max_length, 21]
+        X = X.transpose(1, 2)
+        X = self.pos_encoder(X)
+        # Batch size 1 so mask is not included...
+        output = self.transformer_encoder(X)
+        output = self.decoder(output)
+        return output.view(-1, lengths[0])

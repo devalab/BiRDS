@@ -164,7 +164,7 @@ def resnet98(**kwargs):
 
 
 class ResNet(nn.Module):
-    def __init__(self, feat_vec_len, resnet_layer="resnet6", num_units=64, dropout=0.2):
+    def __init__(self, feat_vec_len, resnet_layer="resnet6", num_units=64, dropout=0.0):
         super(ResNet, self).__init__()
         self.resnet_layer = globals()[resnet_layer](feat_vec_len=feat_vec_len)
         self.fc1 = nn.Linear(512, num_units)

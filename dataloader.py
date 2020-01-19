@@ -16,7 +16,7 @@ from constants import AA_ID_DICT, DEVICE, PROJECT_FOLDER, THREE_TO_ONE
 parser = PDBParser()
 ppb = PPBuilder()
 RCSB_SEQUENCES = path.join(PROJECT_FOLDER, "data/pdb_seqres.txt")
-feat_vec_len = 22
+feat_vec_len = 21
 
 
 def generate_input(data):
@@ -31,11 +31,13 @@ def generate_input(data):
     )
     for i in range(batch_size):
         # One-hot encoding
-        sequence = np.array([np.eye(21)[AA_ID_DICT[el]] for el in data["sequence"][i]]).T
+        sequence = np.array(
+            [np.eye(21)[AA_ID_DICT[el]] for el in data["sequence"][i]]
+        ).T
         transformed_sequence[i, :21, : lengths[i]] = torch.from_numpy(sequence)
-        transformed_sequence[i, 21, : lengths[i]] = (
-            torch.arange(1, lengths[i] + 1, dtype=torch.float32) / lengths[i]
-        )
+        # transformed_sequence[i, 21, : lengths[i]] = (
+        #     torch.arange(1, lengths[i] + 1, dtype=torch.float32) / lengths[i]
+        # )
 
     return transformed_sequence
 

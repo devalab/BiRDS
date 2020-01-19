@@ -9,7 +9,7 @@ from skorch.dataset import CVSplit
 from skorch.helper import predefined_split
 from torch.optim.lr_scheduler import ReduceLROnPlateau
 
-from callbacks import IOU, MyCheckpoint, MyEpochScoring
+from callbacks import IOU, MyCheckpoint, MyEpochScoring, MCC
 from constants import DEVICE, PROJECT_FOLDER
 from dataloader import (
     # DeepCSeqSite,
@@ -20,6 +20,7 @@ from dataloader import (
 )
 from models.resnet_1d import ResNet  # noqa: F401
 from models.transformer import Transformer  # noqa: F401
+from models.unet_1d import UNet  # noqa: F401
 from net import Net
 from utils import copy_code
 
@@ -43,12 +44,13 @@ def initialize_net(**kwargs):
     callbacks = [
         ProgressBar(),
         MyEpochScoring(scoring=IOU, lower_is_better=False),
+        MyEpochScoring(scoring=MCC, lower_is_better=False),
         MyCheckpoint(dirname=path.join(net_location, "latest"), monitor=None),
         LRScheduler(
             policy=ReduceLROnPlateau, monitor="valid_loss", patience=5, verbose=1
         ),
     ]
-    monitors = ["best_valid_loss", "IOU_best"]
+    monitors = ["best_valid_loss", "IOU_best", "MCC_best"]
     for monitor in monitors:
         callbacks.append(
             MyCheckpoint(
@@ -57,10 +59,10 @@ def initialize_net(**kwargs):
             )
         )
     net = Net(
-        module=ResNet,
-        module__feat_vec_len=21,
-        module__resnet_layer="resnet6",
-        module__num_units=64,
+        module=Transformer,
+        module__feat_vec_len=feat_vec_len,
+        # module__resnet_layer="resnet6",
+        # module__num_units=64,
         # module__dropout=0.2,
         criterion=torch.nn.BCEWithLogitsLoss,
         callbacks=callbacks,
@@ -85,11 +87,7 @@ def initialize_dataset():
 
 def main(**kwargs):
     train_data, val_data = initialize_dataset()
-    net = initialize_net(
-        train_split=predefined_split(val_data),
-        module__feat_vec_len=feat_vec_len,
-        **kwargs
-    )
+    net = initialize_net(train_split=predefined_split(val_data), **kwargs)
     copy_code("./", path.join(net.location, "code"))
     net.fit(train_data, y=None)
 
