@@ -1,5 +1,5 @@
-from os import path
 from datetime import datetime
+from os import path
 
 import torch
 from fire import Fire
@@ -11,7 +11,13 @@ from torch.optim.lr_scheduler import ReduceLROnPlateau
 
 from callbacks import IOU, MyCheckpoint, MyEpochScoring
 from constants import DEVICE, PROJECT_FOLDER
-from dataloader import PDBbind, DeepCSeqSite, collate_fn  # noqa: F401
+from dataloader import (
+    # DeepCSeqSite,
+    Kalasanty,
+    # PDBbindRefined,
+    collate_fn,
+    feat_vec_len,
+)
 from models.resnet_1d import ResNet  # noqa: F401
 from models.transformer import Transformer  # noqa: F401
 from net import Net
@@ -52,9 +58,10 @@ def initialize_net(**kwargs):
         )
     net = Net(
         module=ResNet,
+        module__feat_vec_len=21,
         module__resnet_layer="resnet6",
         module__num_units=64,
-        module__dropout=0.2,
+        # module__dropout=0.2,
         criterion=torch.nn.BCEWithLogitsLoss,
         callbacks=callbacks,
     )
@@ -69,14 +76,20 @@ def initialize_dataset():
     # dataset = PDBbind(
     #     path.join(PROJECT_FOLDER, "data/PDBbind/preprocessed/unique2")
     # )
-    train_data = DeepCSeqSite(path.join(PROJECT_FOLDER, "data/DeepCSeqSite/Train.dat"))
-    valid_data = DeepCSeqSite(path.join(PROJECT_FOLDER, "data/DeepCSeqSite/Val.dat"))
+    # train_data = DeepCSeqSite(path.join(PROJECT_FOLDER, "data/DeepCSeqSite/Train.dat"))
+    # valid_data = DeepCSeqSite(path.join(PROJECT_FOLDER, "data/DeepCSeqSite/Val.dat"))
+    train_data = Kalasanty(validation=False)
+    valid_data = Kalasanty(validation=True)
     return train_data, valid_data
 
 
 def main(**kwargs):
     train_data, val_data = initialize_dataset()
-    net = initialize_net(train_split=predefined_split(val_data), **kwargs)
+    net = initialize_net(
+        train_split=predefined_split(val_data),
+        module__feat_vec_len=feat_vec_len,
+        **kwargs
+    )
     copy_code("./", path.join(net.location, "code"))
     net.fit(train_data, y=None)
 

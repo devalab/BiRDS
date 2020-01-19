@@ -60,7 +60,7 @@ class MakeResNet(nn.Module):
         self,
         layers,
         kernel_size,
-        feat_vec_len=21,
+        feat_vec_len,
         zero_init_residual=False,
         norm_layer=None,
     ):
@@ -164,9 +164,9 @@ def resnet98(**kwargs):
 
 
 class ResNet(nn.Module):
-    def __init__(self, resnet_layer="resnet6", num_units=64, dropout=0.2):
+    def __init__(self, feat_vec_len, resnet_layer="resnet6", num_units=64, dropout=0.2):
         super(ResNet, self).__init__()
-        self.resnet_layer = globals()[resnet_layer]()
+        self.resnet_layer = globals()[resnet_layer](feat_vec_len=feat_vec_len)
         self.fc1 = nn.Linear(512, num_units)
         self.act1 = nn.ReLU()
         self.dropout = nn.Dropout(dropout)
@@ -174,7 +174,7 @@ class ResNet(nn.Module):
         # self.act2 = nn.Sigmoid()
 
     def forward(self, X, lengths, **kwargs):
-        # [Batch, 21, Max_length] -> [Batch, 512, Max_length]
+        # [Batch, feat_vec_len, Max_length] -> [Batch, 512, Max_length]
         X = self.resnet_layer(X)
 
         # [Batch, 512, Max_length] -> [Batch * Max_length, 512]

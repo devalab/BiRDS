@@ -1,8 +1,8 @@
+from collections import defaultdict
 from os import environ
 
 from torch import device
 from torch.cuda import is_available
-from collections import defaultdict
 
 # List of amino acids and their integer representation
 AA_ID_DICT = {

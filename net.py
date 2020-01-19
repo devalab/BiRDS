@@ -11,6 +11,13 @@ class Net(skorch.NeuralNet):
     def __init__(self, module, criterion, *args, **kwargs):
         super(Net, self).__init__(module, criterion, *args, **kwargs)
 
+    def on_epoch_begin(self, net, dataset_train=None, dataset_valid=None, **kwargs):
+        super(Net, self).on_epoch_begin(net, dataset_train, dataset_valid, **kwargs)
+        if dataset_train and hasattr(dataset_train, "curr_fold"):
+            dataset_train.curr_fold = (dataset_train.curr_fold + 1) % 10
+        if dataset_valid and hasattr(dataset_valid, "curr_fold"):
+            dataset_valid.curr_fold = (dataset_valid.curr_fold + 1) % 10
+
     def get_loss(self, y_pred, y_true, X, *args, **kwargs):
         lengths = X["lengths"]
         batch_size = len(lengths)

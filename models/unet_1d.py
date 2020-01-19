@@ -66,7 +66,7 @@ class UNetUpBlock(nn.Module):
 class UNet(nn.Module):
     def __init__(
         self,
-        in_channels=21,
+        feat_vec_len,
         n_classes=1,
         depth=5,
         wf=6,
@@ -82,7 +82,7 @@ class UNet(nn.Module):
         Using the default arguments will yield the exact version used
         in the original paper
         Args:
-            in_channels (int): number of input channels
+            feat_vec_len (int): number of input channels
             n_classes (int): number of output channels
             depth (int): depth of the network
             wf (int): number of filters in the first layer is 2**wf
@@ -100,7 +100,7 @@ class UNet(nn.Module):
         assert up_mode in ("upconv", "upsample")
         self.padding = padding
         self.depth = depth
-        prev_channels = in_channels
+        prev_channels = feat_vec_len
         self.down_path = nn.ModuleList()
         for i in range(depth):
             self.down_path.append(

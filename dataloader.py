@@ -1,4 +1,5 @@
 from collections import defaultdict
+from datetime import timedelta
 from os import listdir, makedirs, path
 from shutil import rmtree
 from time import time
@@ -10,29 +11,30 @@ from biopandas.mol2 import PandasMol2
 from rdkit import Chem
 from torch.utils.data import Dataset
 
-from constants import AA_ID_DICT, DEVICE, THREE_TO_ONE, PROJECT_FOLDER
-from datetime import timedelta
+from constants import AA_ID_DICT, DEVICE, PROJECT_FOLDER, THREE_TO_ONE
 
 parser = PDBParser()
 ppb = PPBuilder()
 RCSB_SEQUENCES = path.join(PROJECT_FOLDER, "data/pdb_seqres.txt")
+feat_vec_len = 22
 
 
 def generate_input(data):
     """
     Generate input for each minibatch. Pad the input feature vectors
-    so that the final input shape is [MINIBATCH_SIZE, 2, Max_length]
+    so that the final input shape is [MINIBATCH_SIZE, feat_vec_len, Max_length]
     """
     lengths = data["length"]
-    sequences = data["sequence"]
     batch_size = len(lengths)
     transformed_sequence = torch.zeros(
-        batch_size, 2, lengths[0], device=DEVICE, dtype=torch.float32
+        batch_size, feat_vec_len, lengths[0], device=DEVICE, dtype=torch.float32
     )
     for i in range(batch_size):
-        transformed_sequence[i, 0, : lengths[i]] = torch.from_numpy(sequences[i])
-        transformed_sequence[i, 1, : lengths[i]] = (
-            torch.arange(0, lengths[i], dtype=torch.float32) / lengths[i]
+        # One-hot encoding
+        sequence = np.array([np.eye(21)[AA_ID_DICT[el]] for el in data["sequence"][i]]).T
+        transformed_sequence[i, :21, : lengths[i]] = torch.from_numpy(sequence)
+        transformed_sequence[i, 21, : lengths[i]] = (
+            torch.arange(1, lengths[i] + 1, dtype=torch.float32) / lengths[i]
         )
 
     return transformed_sequence
@@ -409,13 +411,9 @@ class scPDB(Dataset):
                 ):
                     print("Converted PDB does not exist for %s" % pdb_id_struct)
                     continue
-                if (
-                    self.blacklisted[pdb_id_struct]
-                    or pdb_id_struct == "3acl_1"
-                    or pdb_id_struct == "3uf9_1"
-                ):
+                if self.blacklisted[pdb_id_struct]:
                     continue
-                print(pdb_id_struct)
+                # print(pdb_id_struct)
                 if path.exists(path.join(self.save_dir, pdb_id_struct + ".npz")):
                     continue
                 process_time_start = time()
@@ -471,40 +469,67 @@ class scPDB(Dataset):
 
 
 class Kalasanty(scPDB):
-    def __init__(self, folder, validation=False):
-        super().__init__(folder)
-        self.curr_fold = 0
-        self.folds = []
+    def __init__(self, validation=False):
+        super().__init__()
+        self.curr_fold = -1
+        self.train_folds = []
+        self.validation_folds = []
         for i in range(10):
-            with open(path.join(self.folder, "splits", "train_ids_fold" + str(i))) as f:
-                self.folds.append(set([line.strip() for line in f.readlines()]))
+            with open(path.join(self.splits_dir, "train_ids_fold" + str(i))) as f:
+                self.train_folds.append([line.strip() for line in f.readlines()])
+        self.all_samples = set(self.train_folds[0]).union(set(self.train_folds[1]))
+        for i in range(10):
+            self.validation_folds.append(
+                list(self.all_samples - set(self.train_folds[i]))
+            )
         self.dataset = self.get_dataset()
+        self.validation = validation
 
     def get_dataset(self):
-        all_samples = self.folds[0].union(self.folds[1])
+        available = defaultdict(list)
+        for file in listdir(self.raw_dir):
+            available[file[:4]].append(file)
 
-        available = defaultdict(set)
-        for file in listdir(path.join(self.folder, "raw")):
-            available[file[:4]].add(file)
-
-        with open(path.join(self.folder, "splits", "scPDB_blacklist.txt")) as f:
+        with open(path.join(self.splits_dir, "scPDB_blacklist.txt")) as f:
             for line in f.readlines():
                 line = line.strip()
                 available[line[:4]].remove(line)
-                if available[line[:4]] == set():
+                if available[line[:4]] == list():
                     del available[line[:4]]
 
-        with open(path.join(self.folder, "splits", "scPDB_leakage.txt")) as f:
+        with open(path.join(self.splits_dir, "scPDB_leakage.txt")) as f:
             for line in f.readlines():
                 line = line.strip()
                 available[line[:4]].remove(line)
                 if available[line[:4]] == []:
                     del available[line[:4]]
 
-        for key in set(available.keys()) - all_samples:
+        for key in set(available.keys()) - self.all_samples:
             del available[key]
 
         return available
+
+    def __getitem__(self, index):
+        if self.validation:
+            pdb_id = self.validation_folds[self.curr_fold][index]
+        else:
+            pdb_id = self.train_folds[self.curr_fold][index]
+        # Just taking the first available structure for a pdb
+        pdb_id_struct = self.dataset[pdb_id][0]
+        data = np.load(path.join(self.save_dir, pdb_id_struct + ".npz"))
+        data = {
+            key: data[key].item() if data[key].shape is () else data[key]
+            for key in data
+        }
+        return data
+
+    def __len__(self):
+        if self.validation:
+            # return 10
+            return len(self.validation_folds[self.curr_fold])
+        else:
+            # return 100
+            return len(self.train_folds[self.curr_fold])
 
 
 if __name__ == "__main__":
