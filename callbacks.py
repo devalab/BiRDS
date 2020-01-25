@@ -1,8 +1,9 @@
 from os import path
 
 import torch
+from sklearn.metrics import jaccard_score, matthews_corrcoef
 from skorch.callbacks import Checkpoint, EpochScoring
-from sklearn.metrics import matthews_corrcoef, jaccard_score
+from skorch.utils import noop
 
 SMOOTH = 1e-6
 
@@ -13,6 +14,7 @@ def IOU(net, X, y):
     # y will be None
     iterator = net.get_iterator(X, training=False)
     iou = 0.0
+    data_size = 0
     for data in iterator:
         Xi, yt = data
         yp = net.evaluation_step(Xi, training=False)
@@ -21,15 +23,17 @@ def IOU(net, X, y):
         yt = yt.bool().cpu()
         lengths = Xi["lengths"]
         batch_size = len(lengths)
+        data_size += batch_size
         for i in range(batch_size):
             iou += jaccard_score(yt[i, : lengths[i]], yp[i, : lengths[i]])
-    return iou / iterator.__len__()
+    return iou / data_size
 
 
 def MCC(net, X, y):
     # y will be None
     iterator = net.get_iterator(X, training=False)
     mcc = 0.0
+    data_size = 0
     for data in iterator:
         Xi, yt = data
         yp = net.evaluation_step(Xi, training=False)
@@ -38,15 +42,13 @@ def MCC(net, X, y):
         yt = yt.bool().cpu()
         lengths = Xi["lengths"]
         batch_size = len(lengths)
+        data_size += batch_size
         for i in range(batch_size):
             mcc += matthews_corrcoef(yt[i, : lengths[i]], yp[i, : lengths[i]])
-    return mcc / iterator.__len__()
+    return mcc / data_size
 
 
 class MyEpochScoring(EpochScoring):
-    def __init__(self, scoring, lower_is_better=True):
-        super().__init__(scoring, lower_is_better=lower_is_better)
-
     def get_test_data(self, dataset_train, dataset_valid):
         # Problem with getting the test data in original code
         dataset = dataset_train if self.on_train else dataset_valid
@@ -65,19 +67,28 @@ class MyCheckpoint(Checkpoint):
         self,
         dirname,
         monitor,
+        log_losses=["train_loss", "valid_loss"],
         log_scores=["IOU", "MCC"],
         f_params="model.pth",
-        f_optimizer="optimizer.pth",
+        f_optimizer="optimizer.pt",
         f_history="history.json",
+        f_pickle=None,
+        fn_prefix="",
+        event_name="event_cp",
+        sink=noop,
     ):
         super().__init__(
             monitor=monitor,
             f_params=f_params,
             f_optimizer=f_optimizer,
             f_history=f_history,
+            f_pickle=f_pickle,
+            fn_prefix=fn_prefix,
             dirname=dirname,
+            event_name=event_name,
+            sink=sink,
         )
-        self.log_losses = ["train_loss", "valid_loss"]
+        self.log_losses = log_losses
         self.log_scores = log_scores
 
     def save_model(self, net):
@@ -88,18 +99,32 @@ class MyCheckpoint(Checkpoint):
             losses_history = {}
             scores_history = {}
             if self.monitor:
+                # Only for specific models where the best score is needed
                 file = open(f, "w")
                 for key in self.log_losses:
-                    losses_history[key] = net.history[:, "batches", :, key]
+                    try:
+                        losses_history[key] = net.history[:, "batches", :, key]
+                    except (KeyError):
+                        pass
                 for key in self.log_scores:
-                    scores_history[key] = net.history[:, key]
+                    try:
+                        scores_history[key] = net.history[:, key]
+                    except (KeyError):
+                        pass
                 epochs = net.history[-1, "epoch"]
             else:
+                # Latest model gets all the data stored / appended
                 file = open(f, "a")
                 for key in self.log_losses:
-                    losses_history[key] = [net.history[-1, "batches", :, key]]
+                    try:
+                        losses_history[key] = [net.history[-1, "batches", :, key]]
+                    except (KeyError):
+                        pass
                 for key in self.log_scores:
-                    scores_history[key] = [net.history[-1, key]]
+                    try:
+                        scores_history[key] = [net.history[-1, key]]
+                    except (KeyError):
+                        pass
                 epochs = 1
             # Each key in history will be a dictionary of lists of size [epochs, len_of_key]
             for epoch in range(epochs):

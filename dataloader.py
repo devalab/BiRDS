@@ -7,63 +7,71 @@ from time import time
 import numpy as np
 import torch
 from Bio.PDB import PDBParser, PPBuilder
-from biopandas.mol2 import PandasMol2
+
+# from biopandas.mol2 import PandasMol2
 from rdkit import Chem
 from torch.utils.data import Dataset
+from skorch import dataset
 
-from constants import AA_ID_DICT, DEVICE, PROJECT_FOLDER, THREE_TO_ONE
+from constants import AA_ID_DICT, DEVICE, PROJECT_FOLDER
 
 parser = PDBParser()
 ppb = PPBuilder()
 RCSB_SEQUENCES = path.join(PROJECT_FOLDER, "data/pdb_seqres.txt")
-feat_vec_len = 21
+feat_vec_len = 22
 
 
-def generate_input(data):
+class TupleDataset(dataset.Dataset):
+    def __init__(self, X, y=None, length=None):
+        if type(X[0]) is tuple and y is None:
+            self.tuple_dataset = True
+            self.y = [el[1] for el in X]
+            self.X = [el[0] for el in X]
+            self._len = len(self.y)
+        else:
+            self.tuple_dataset = False
+            super().__init__(X, y=y, length=length)
+
+    def __getitem__(self, i):
+        if self.tuple_dataset:
+            return self.X[i], self.y[i]
+        else:
+            return super().__getitem__(i)
+
+
+def generate_input(sample):
     """
-    Generate input for each minibatch. Pad the input feature vectors
-    so that the final input shape is [MINIBATCH_SIZE, feat_vec_len, Max_length]
+    Generate input for a single sample which is a dictionary containing required items
     """
-    lengths = data["length"]
-    batch_size = len(lengths)
-    transformed_sequence = torch.zeros(
-        batch_size, feat_vec_len, lengths[0], device=DEVICE, dtype=torch.float32
-    )
-    for i in range(batch_size):
-        # One-hot encoding
-        sequence = np.array(
-            [np.eye(21)[AA_ID_DICT[el]] for el in data["sequence"][i]]
-        ).T
-        transformed_sequence[i, :21, : lengths[i]] = torch.from_numpy(sequence)
-        # transformed_sequence[i, 21, : lengths[i]] = (
-        #     torch.arange(1, lengths[i] + 1, dtype=torch.float32) / lengths[i]
-        # )
+    X = {}
+    X["length"] = sample["length"]
+    X["X"] = torch.zeros(feat_vec_len, X["length"], device=DEVICE)
 
-    return transformed_sequence
+    # One-hot encoding
+    sequence = np.array([np.eye(21)[AA_ID_DICT[el]] for el in sample["sequence"]]).T
+    X["X"][:21] = torch.from_numpy(sequence)
 
+    # Positional encoding
+    X["X"][21] = torch.arange(1, X["length"] + 1, dtype=torch.float32) / X["length"]
 
-def generate_target(data):
-    lengths = data["length"]
-    labels = data["labels"]
-    batch_size = len(lengths)
-    target = torch.zeros(batch_size, lengths[0], device=DEVICE, dtype=torch.float32)
-    for i in range(batch_size):
-        target[i, : lengths[i]] = torch.from_numpy(labels[i])
-    return target
+    return X
 
 
 def collate_fn(samples):
-    # samples is a list of dictionaries and is of size MINIBATCH_SIZE
-    # The dicts are the one returned from __getitem__ function
+    # samples is a list of (X, y) of size MINIBATCH_SIZE
     # Sort the samples in decreasing order of their length
-    samples.sort(key=lambda x: x["length"], reverse=True)
-    # Convert a list of dictionaries into a dictionary of lists
-    batch = {k: [dic[k] for dic in samples] for k in samples[0]}
+    samples.sort(key=lambda x: len(x[1]), reverse=True)
+    batch_size = len(samples)
+    max_len = samples[0][0]["length"]
     X = {}
-    X["X"] = generate_input(batch)
-    X["lengths"] = batch["length"]
-    # print(batch["pdb_id"][0])
-    y = generate_target(batch)
+    X["lengths"] = []
+    X["X"] = torch.zeros(batch_size, feat_vec_len, max_len, device=DEVICE)
+    y = torch.zeros(batch_size, max_len, device=DEVICE)
+    for i in range(batch_size):
+        length = samples[i][0]["length"]
+        X["lengths"].append(length)
+        X["X"][i, :, :length] = samples[i][0]["X"]
+        y[i, :length] = samples[i][1]
     return X, y
 
 
@@ -283,7 +291,9 @@ class DeepCSeqSite(Dataset):
 
 
 class scPDB(Dataset):
-    def __init__(self, overwrite=False):
+    def __init__(self, overwrite=False, continue_processing=False):
+        # overwrite: If true, the whole preprocessed data will be overwritten
+        # continue_preprocessing: Continue preprocessing data from where it stopped
         super(scPDB, self).__init__()
         self.data_dir = path.join(PROJECT_FOLDER, "data/scPDB")
         self.raw_dir = path.join(self.data_dir, "raw")
@@ -291,17 +301,19 @@ class scPDB(Dataset):
         self.save_dir = path.join(self.data_dir, "preprocessed")
         self.process_time = 0
         self.write_time = 0
-        self.dataset = self.initialize_dataset_pdb_ids()
-        self.blacklisted = self.get_blacklisted_proteins()
         # self.protein_sequences = self.get_sequences_from_rcsb()
         if overwrite:
             rmtree(self.save_dir)
         if not path.exists(self.save_dir):
             makedirs(self.save_dir)
-        self.preprocess_pdb()
+            continue_processing = True
+        if continue_processing:
+            self.dataset = self.initialize_dataset_pdb_ids(self.raw_dir)
+            self.blacklisted = self.get_blacklisted_proteins()
+            self.preprocess_pdb()
 
     def initialize_dataset_pdb_ids(self):
-        available = defaultdict(set)
+        available = defaultdict(list)
         for file in listdir(self.raw_dir):
             available[file[:4]].add(file)
         return available
@@ -428,110 +440,106 @@ class scPDB(Dataset):
                 self.write_time += time() - write_time_start
         self.log_info()
 
-    def preprocess_mol2(self):
-        # available = np.unique([el[:4] for el in listdir(self.raw_dir)])
-        # self.id_to_rcsb_seq = get_sequences_from_rcsb(available)
-        # print(len(self.id_to_rcsb_seq))
-        makedirs(self.save_dir)
+    # def preprocess_mol2(self):
+    #     # available = np.unique([el[:4] for el in listdir(self.raw_dir)])
+    #     # self.id_to_rcsb_seq = get_sequences_from_rcsb(available)
+    #     # print(len(self.id_to_rcsb_seq))
+    #     makedirs(self.save_dir)
 
-        for i, pdb_id in enumerate(sorted(listdir(self.raw_dir))):
-            pmol = PandasMol2().read_mol2(
-                path.join(self.raw_dir, pdb_id, "protein.mol2")
-            )
-            lmol = PandasMol2().read_mol2(
-                path.join(self.raw_dir, pdb_id, "ligand.mol2")
-            )
-            ligand_coords = lmol.df[lmol.df["atom_type"] != "H"][["x", "y", "z"]]
-            protein_heavy = pmol.df[pmol.df["atom_type"] != "H"]
-            binding_site = {}
-            for j, atom_coord in enumerate(ligand_coords.values):
-                pmol.df["distances"] = pmol.distance_df(protein_heavy, atom_coord)
-                cutoff = pmol.df[pmol.df["distances"] <= 4.5]
-                for k, aa in enumerate(cutoff.values):
-                    binding_site[aa[7]] = aa[6]
-            # sequence = self.id_to_rcsb_seq[pdb_id]
-            # TODO Get the sequence here
-            sequence = None
-            length = len(sequence)
-            labels = np.zeros(length)
-            for key, val in binding_site.items():
-                aa = THREE_TO_ONE[key[:3]]
-                offset = int(key[3:]) - int(val) + 1
-                pos = int(key[3:]) - offset
-                assert pos < length
-                assert sequence[pos] == aa
-                labels[pos] = 1
-            sequence = np.array([AA_ID_DICT[el] for el in sequence])
-            np.savez(
-                path.join(self.save_dir, pdb_id + ".npz"),
-                sequence=sequence,
-                length=length,
-                labels=labels,
-            )
+    #     for i, pdb_id in enumerate(sorted(listdir(self.raw_dir))):
+    #         pmol = PandasMol2().read_mol2(
+    #             path.join(self.raw_dir, pdb_id, "protein.mol2")
+    #         )
+    #         lmol = PandasMol2().read_mol2(
+    #             path.join(self.raw_dir, pdb_id, "ligand.mol2")
+    #         )
+    #         ligand_coords = lmol.df[lmol.df["atom_type"] != "H"][["x", "y", "z"]]
+    #         protein_heavy = pmol.df[pmol.df["atom_type"] != "H"]
+    #         binding_site = {}
+    #         for j, atom_coord in enumerate(ligand_coords.values):
+    #             pmol.df["distances"] = pmol.distance_df(protein_heavy, atom_coord)
+    #             cutoff = pmol.df[pmol.df["distances"] <= 4.5]
+    #             for k, aa in enumerate(cutoff.values):
+    #                 binding_site[aa[7]] = aa[6]
+    #         # sequence = self.id_to_rcsb_seq[pdb_id]
+    #         # TODO Get the sequence here
+    #         sequence = None
+    #         length = len(sequence)
+    #         labels = np.zeros(length)
+    #         for key, val in binding_site.items():
+    #             aa = THREE_TO_ONE[key[:3]]
+    #             offset = int(key[3:]) - int(val) + 1
+    #             pos = int(key[3:]) - offset
+    #             assert pos < length
+    #             assert sequence[pos] == aa
+    #             labels[pos] = 1
+    #         sequence = np.array([AA_ID_DICT[el] for el in sequence])
+    #         np.savez(
+    #             path.join(self.save_dir, pdb_id + ".npz"),
+    #             sequence=sequence,
+    #             length=length,
+    #             labels=labels,
+    #         )
 
 
 class Kalasanty(scPDB):
-    def __init__(self, validation=False):
+    def __init__(self):
         super().__init__()
-        self.curr_fold = -1
         self.train_folds = []
-        self.validation_folds = []
+        self.valid_folds = []
         for i in range(10):
             with open(path.join(self.splits_dir, "train_ids_fold" + str(i))) as f:
                 self.train_folds.append([line.strip() for line in f.readlines()])
-        self.all_samples = set(self.train_folds[0]).union(set(self.train_folds[1]))
+        self.dataset_list = set(self.train_folds[0]).union(set(self.train_folds[1]))
         for i in range(10):
-            self.validation_folds.append(
-                list(self.all_samples - set(self.train_folds[i]))
-            )
+            self.valid_folds.append(list(self.dataset_list - set(self.train_folds[i])))
         self.dataset = self.get_dataset()
-        self.validation = validation
+        self.dataset_list = sorted(list(self.dataset_list))
+        self.dataset_id_to_index = defaultdict(int)
+        for i, val in enumerate(self.dataset_list):
+            self.dataset_id_to_index[val] = i
 
     def get_dataset(self):
         available = defaultdict(list)
-        for file in listdir(self.raw_dir):
-            available[file[:4]].append(file)
+        for file in listdir(self.save_dir):
+            available[file[:4]].append(file[:-4])
 
-        with open(path.join(self.splits_dir, "scPDB_blacklist.txt")) as f:
-            for line in f.readlines():
-                line = line.strip()
-                available[line[:4]].remove(line)
-                if available[line[:4]] == list():
-                    del available[line[:4]]
+        extras = ["scPDB_blacklist.txt", "scPDB_leakage.txt"]
+        for file in extras:
+            with open(path.join(self.splits_dir, file)) as f:
+                for line in f.readlines():
+                    line = line.strip()
+                    if line in available[line[:4]]:
+                        available[line[:4]].remove(line)
+                    if available[line[:4]] == list():
+                        del available[line[:4]]
 
-        with open(path.join(self.splits_dir, "scPDB_leakage.txt")) as f:
-            for line in f.readlines():
-                line = line.strip()
-                available[line[:4]].remove(line)
-                if available[line[:4]] == []:
-                    del available[line[:4]]
-
-        for key in set(available.keys()) - self.all_samples:
+        for key in set(available.keys()) - self.dataset_list:
             del available[key]
 
         return available
 
+    def custom_cv(self):
+        for i in range(10):
+            train_indices = [self.dataset_id_to_index[el] for el in self.train_folds[i]]
+            valid_indices = [self.dataset_id_to_index[el] for el in self.valid_folds[i]]
+            yield train_indices[:100], valid_indices[:12]
+
     def __getitem__(self, index):
-        if self.validation:
-            pdb_id = self.validation_folds[self.curr_fold][index]
-        else:
-            pdb_id = self.train_folds[self.curr_fold][index]
+        pdb_id = self.dataset_list[index]
         # Just taking the first available structure for a pdb
         pdb_id_struct = self.dataset[pdb_id][0]
-        data = np.load(path.join(self.save_dir, pdb_id_struct + ".npz"))
-        data = {
-            key: data[key].item() if data[key].shape is () else data[key]
-            for key in data
+        sample = np.load(path.join(self.save_dir, pdb_id_struct + ".npz"))
+        sample = {
+            key: sample[key].item() if sample[key].shape is () else sample[key]
+            for key in sample
         }
-        return data
+        X = generate_input(sample)
+        y = torch.from_numpy(sample["labels"]).to(DEVICE)
+        return X, y
 
     def __len__(self):
-        if self.validation:
-            # return 10
-            return len(self.validation_folds[self.curr_fold])
-        else:
-            # return 100
-            return len(self.train_folds[self.curr_fold])
+        return len(self.dataset_list)
 
 
 if __name__ == "__main__":

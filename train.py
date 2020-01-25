@@ -6,8 +6,10 @@ from fire import Fire
 from skorch.callbacks import LRScheduler, ProgressBar
 from skorch.cli import parse_args
 from skorch.dataset import CVSplit
-from skorch.helper import predefined_split
+
+# from skorch.helper import predefined_split
 from torch.optim.lr_scheduler import ReduceLROnPlateau
+from sklearn.model_selection import cross_validate, cross_val_score, GridSearchCV
 
 from callbacks import IOU, MyCheckpoint, MyEpochScoring, MCC
 from constants import DEVICE, PROJECT_FOLDER
@@ -15,6 +17,7 @@ from dataloader import (
     # DeepCSeqSite,
     Kalasanty,
     # PDBbindRefined,
+    TupleDataset,
     collate_fn,
     feat_vec_len,
 )
@@ -27,14 +30,15 @@ from utils import copy_code
 NET_DEFAULTS = {
     "optimizer": torch.optim.Adam,
     "lr": 0.01,
-    "max_epochs": 100,
-    "batch_size": 1,
-    "train_split": CVSplit(10, random_state=42),
+    "max_epochs": 2,
+    "batch_size": 4,
+    "train_split": CVSplit(cv=0.1, random_state=42),
     "warm_start": False,
     "verbose": 1,
     "device": DEVICE,
     "iterator_train__collate_fn": collate_fn,
     "iterator_valid__collate_fn": collate_fn,
+    "dataset": TupleDataset,
 }
 
 
@@ -46,20 +50,20 @@ def initialize_net(**kwargs):
         MyEpochScoring(scoring=IOU, lower_is_better=False),
         MyEpochScoring(scoring=MCC, lower_is_better=False),
         MyCheckpoint(dirname=path.join(net_location, "latest"), monitor=None),
-        LRScheduler(
-            policy=ReduceLROnPlateau, monitor="valid_loss", patience=5, verbose=1
-        ),
+        # LRScheduler(
+        #     policy=ReduceLROnPlateau, monitor="valid_loss", patience=5, verbose=1
+        # ),
     ]
-    monitors = ["best_valid_loss", "IOU_best", "MCC_best"]
-    for monitor in monitors:
-        callbacks.append(
-            MyCheckpoint(
-                dirname=path.join(net_location, monitor),
-                monitor=lambda net: net.history[-1, monitor],
-            )
-        )
+    # monitors = ["best_valid_loss", "IOU_best", "MCC_best"]
+    # for monitor in monitors:
+    #     callbacks.append(
+    #         MyCheckpoint(
+    #             dirname=path.join(net_location, monitor),
+    #             monitor=lambda net: net.history[-1, monitor],
+    #         )
+    #     )
     net = Net(
-        module=Transformer,
+        module=ResNet,
         module__feat_vec_len=feat_vec_len,
         # module__resnet_layer="resnet6",
         # module__num_units=64,
@@ -74,22 +78,22 @@ def initialize_net(**kwargs):
     return net
 
 
-def initialize_dataset():
-    # dataset = PDBbind(
-    #     path.join(PROJECT_FOLDER, "data/PDBbind/preprocessed/unique2")
-    # )
-    # train_data = DeepCSeqSite(path.join(PROJECT_FOLDER, "data/DeepCSeqSite/Train.dat"))
-    # valid_data = DeepCSeqSite(path.join(PROJECT_FOLDER, "data/DeepCSeqSite/Val.dat"))
-    train_data = Kalasanty(validation=False)
-    valid_data = Kalasanty(validation=True)
-    return train_data, valid_data
-
-
 def main(**kwargs):
-    train_data, val_data = initialize_dataset()
-    net = initialize_net(train_split=predefined_split(val_data), **kwargs)
+    dataset = Kalasanty()
+
+    # net = initialize_net(train_split=CVSplit(cv=dataset.custom_cv()), **kwargs)
+    # copy_code("./", path.join(net.location, "code"))
+    # net.fit(dataset, y=None)
+
+    # Grid Search has to be done without validation monitors or score monitors and
+    # LRScheduler needs to have a different way of reducing
+    net = initialize_net(train_split=None, **kwargs)
     copy_code("./", path.join(net.location, "code"))
-    net.fit(train_data, y=None)
+    params = [
+        {"lr": [0.1, 2, 0.01]},
+    ]
+    gs = GridSearchCV(net, params, cv=dataset.custom_cv(), verbose=5)
+    gs.fit(dataset, y=None)
 
 
 if __name__ == "__main__":
