@@ -543,4 +543,4 @@ class Kalasanty(scPDB):
 
 
 if __name__ == "__main__":
-    data = scPDB()
+    data = Kalasanty()

@@ -50,18 +50,18 @@ def initialize_net(**kwargs):
         MyEpochScoring(scoring=IOU, lower_is_better=False),
         MyEpochScoring(scoring=MCC, lower_is_better=False),
         MyCheckpoint(dirname=path.join(net_location, "latest"), monitor=None),
-        # LRScheduler(
-        #     policy=ReduceLROnPlateau, monitor="valid_loss", patience=5, verbose=1
-        # ),
+        LRScheduler(
+            policy=ReduceLROnPlateau, monitor="valid_loss", patience=5, verbose=1
+        ),
     ]
-    # monitors = ["best_valid_loss", "IOU_best", "MCC_best"]
-    # for monitor in monitors:
-    #     callbacks.append(
-    #         MyCheckpoint(
-    #             dirname=path.join(net_location, monitor),
-    #             monitor=lambda net: net.history[-1, monitor],
-    #         )
-    #     )
+    monitors = ["best_valid_loss", "IOU_best", "MCC_best"]
+    for monitor in monitors:
+        callbacks.append(
+            MyCheckpoint(
+                dirname=path.join(net_location, monitor),
+                monitor=lambda net: net.history[-1, monitor],
+            )
+        )
     net = Net(
         module=ResNet,
         module__feat_vec_len=feat_vec_len,
@@ -81,19 +81,26 @@ def initialize_net(**kwargs):
 def main(**kwargs):
     dataset = Kalasanty()
 
-    # net = initialize_net(train_split=CVSplit(cv=dataset.custom_cv()), **kwargs)
-    # copy_code("./", path.join(net.location, "code"))
-    # net.fit(dataset, y=None)
+    net = initialize_net(train_split=CVSplit(cv=dataset.custom_cv()), **kwargs)
+    copy_code("./", path.join(net.location, "code"))
+    net.fit(dataset, y=None)
 
     # Grid Search has to be done without validation monitors or score monitors and
     # LRScheduler needs to have a different way of reducing
-    net = initialize_net(train_split=None, **kwargs)
-    copy_code("./", path.join(net.location, "code"))
-    params = [
-        {"lr": [0.1, 2, 0.01]},
-    ]
-    gs = GridSearchCV(net, params, cv=dataset.custom_cv(), verbose=5)
-    gs.fit(dataset, y=None)
+
+    # net = initialize_net(train_split=None, **kwargs)
+    # copy_code("./", path.join(net.location, "code"))
+    # params = [
+    #     {"lr": [0.1, 2, 0.01]},
+    # ]
+    # gs = GridSearchCV(net, params, cv=dataset.custom_cv(), verbose=5)
+    # gs.fit(dataset, y=None)
+    # print("Results of grid search:")
+    # print("Best parameter configuration:", gs.best_params_)
+    # print("Achieved MCC score:", gs.best_score_)
+
+    # print("Saving best model to '{}'.".format(net.location))
+    # gs.best_estimator_.save_params(f_params=net.location)
 
 
 if __name__ == "__main__":
