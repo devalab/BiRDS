@@ -3,6 +3,7 @@ from datetime import timedelta
 from os import listdir, makedirs, path
 from shutil import rmtree
 from time import time
+import csv
 
 import numpy as np
 import torch
@@ -18,25 +19,28 @@ from constants import AA_ID_DICT, DEVICE, PROJECT_FOLDER
 parser = PDBParser()
 ppb = PPBuilder()
 RCSB_SEQUENCES = path.join(PROJECT_FOLDER, "data/pdb_seqres.txt")
+
+
+def get_features(csv_file):
+    feats = {}
+    with open(csv_file) as f:
+        records = csv.reader(f)
+        for i, row in enumerate(records):
+            if i == 0:
+                length = len(row) - 1
+                continue
+            feats[row[0]] = np.array(
+                [float(el) if el != "" else 0.0 for el in row[1:]], dtype=np.float32
+            )
+        feats["X"] = np.zeros(length)
+    return feats
+
+
+AA_all_feats = get_features(path.join(PROJECT_FOLDER, "data/all_features.csv"))
+AA_sel_feats = get_features(path.join(PROJECT_FOLDER, "data/selected_features.csv"))
 feat_vec_len = 22
-
-
-class TupleDataset(dataset.Dataset):
-    def __init__(self, X, y=None, length=None):
-        if type(X[0]) is tuple and y is None:
-            self.tuple_dataset = True
-            self.y = [el[1] for el in X]
-            self.X = [el[0] for el in X]
-            self._len = len(self.y)
-        else:
-            self.tuple_dataset = False
-            super().__init__(X, y=y, length=length)
-
-    def __getitem__(self, i):
-        if self.tuple_dataset:
-            return self.X[i], self.y[i]
-        else:
-            return super().__getitem__(i)
+# feat_vec_len += len(AA_all_feats["X"])
+feat_vec_len += len(AA_sel_feats["X"])
 
 
 def generate_input(sample):
@@ -53,6 +57,11 @@ def generate_input(sample):
 
     # Positional encoding
     X["X"][21] = torch.arange(1, X["length"] + 1, dtype=torch.float32) / X["length"]
+
+    # AA Properties
+    X["X"][22:] = torch.from_numpy(
+        np.array([AA_sel_feats[aa] for aa in sample["sequence"]]).T
+    )
 
     return X
 
@@ -73,6 +82,24 @@ def collate_fn(samples):
         X["X"][i, :, :length] = samples[i][0]["X"]
         y[i, :length] = samples[i][1]
     return X, y
+
+
+class TupleDataset(dataset.Dataset):
+    def __init__(self, X, y=None, length=None):
+        if type(X[0]) is tuple and y is None:
+            self.tuple_dataset = True
+            self.y = [el[1] for el in X]
+            self.X = [el[0] for el in X]
+            self._len = len(self.y)
+        else:
+            self.tuple_dataset = False
+            super().__init__(X, y=y, length=length)
+
+    def __getitem__(self, i):
+        if self.tuple_dataset:
+            return self.X[i], self.y[i]
+        else:
+            return super().__getitem__(i)
 
 
 class PDBbindRefined(Dataset):
@@ -523,7 +550,8 @@ class Kalasanty(scPDB):
         for i in range(10):
             train_indices = [self.dataset_id_to_index[el] for el in self.train_folds[i]]
             valid_indices = [self.dataset_id_to_index[el] for el in self.valid_folds[i]]
-            yield train_indices[:100], valid_indices[:12]
+            # yield train_indices[:100], valid_indices[:12]
+            yield train_indices, valid_indices
 
     def __getitem__(self, index):
         pdb_id = self.dataset_list[index]

@@ -30,8 +30,8 @@ from utils import copy_code
 NET_DEFAULTS = {
     "optimizer": torch.optim.Adam,
     "lr": 0.01,
-    "max_epochs": 2,
-    "batch_size": 4,
+    "max_epochs": 50,
+    "batch_size": 1,
     "train_split": CVSplit(cv=0.1, random_state=42),
     "warm_start": False,
     "verbose": 1,
@@ -65,8 +65,8 @@ def initialize_net(**kwargs):
     net = Net(
         module=ResNet,
         module__feat_vec_len=feat_vec_len,
-        # module__resnet_layer="resnet6",
-        # module__num_units=64,
+        module__resnet_layer="resnet6",
+        module__num_units=64,
         # module__dropout=0.2,
         criterion=torch.nn.BCEWithLogitsLoss,
         callbacks=callbacks,
