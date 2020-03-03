@@ -1,13 +1,14 @@
 from collections import defaultdict
 from datetime import timedelta
-from os import listdir, makedirs, path
+from os import listdir, makedirs, path, remove
+from glob import glob
 from shutil import rmtree
 from time import time
 import csv
 
 import numpy as np
 import torch
-from Bio.PDB import PDBParser, PPBuilder
+from Bio.PDB import PDBParser, PPBuilder, is_aa
 
 # from biopandas.mol2 import PandasMol2
 from rdkit import Chem
@@ -15,7 +16,11 @@ from torch.utils.data import Dataset
 from skorch import dataset
 
 from constants import AA_ID_DICT, DEVICE, PROJECT_FOLDER
+import warnings
+from Bio import BiopythonWarning
+from reindex_pdb import reindex_pdb
 
+warnings.simplefilter("ignore", BiopythonWarning)
 parser = PDBParser()
 ppb = PPBuilder()
 RCSB_SEQUENCES = path.join(PROJECT_FOLDER, "data/pdb_seqres.txt")
@@ -33,6 +38,7 @@ def get_features(csv_file):
                 [float(el) if el != "" else 0.0 for el in row[1:]], dtype=np.float32
             )
         feats["X"] = np.zeros(length)
+    feats = defaultdict(lambda: np.zeros(length), feats)
     return feats
 
 
@@ -42,6 +48,36 @@ feat_vec_len = 22
 # feat_vec_len += len(AA_all_feats["X"])
 feat_vec_len += len(AA_sel_feats["X"])
 
+common_pssms = defaultdict(str)
+pssm_folder = "data/pssm"
+with open("unique", "r") as f:
+    lines = f.readlines()
+
+for line in lines:
+    line = line.strip().split()
+    pdb_id_struct, chain_id = line[0].split("/")
+    chain_id = chain_id[:-1]
+    pssm_generated_id = pdb_id_struct + "_" + chain_id
+    common_pssms[pssm_generated_id] = pssm_generated_id
+    for el in line[1:]:
+        pdb_id_struct, chain_id = el.split("/")
+        chain_id = chain_id[:-1]
+        common_pssms[pdb_id_struct + "_" + chain_id] = pssm_generated_id
+
+def get_pssm(pdb_id_struct, chain_id, length):
+    tmp = common_pssms[pdb_id_struct + "_" + chain_id]
+    pdb_id_struct = tmp[:-2]
+    chain_id = tmp[-1]
+    with open(path.join(pssm_folder, pdb_id_struct, chain_id + ".pssm"), "r") as f:
+        lines = f.readlines()
+    feature = torch.zeros(21, length, device=DEVICE)
+    for i, line in enumerate(lines):
+        line = np.array(line.strip().split(), dtype=np.float32)
+        feature[i] = torch.from_numpy(line)
+    return feature
+
+# PSSM length
+feat_vec_len += 21
 
 def generate_input(sample):
     """
@@ -58,8 +94,11 @@ def generate_input(sample):
     # Positional encoding
     X["X"][21] = torch.arange(1, X["length"] + 1, dtype=torch.float32) / X["length"]
 
+    # PSSM
+    X["X"][22:43] = sample["pssm"]
+
     # AA Properties
-    X["X"][22:] = torch.from_numpy(
+    X["X"][43:] = torch.from_numpy(
         np.array([AA_sel_feats[aa] for aa in sample["sequence"]]).T
     )
 
@@ -335,14 +374,14 @@ class scPDB(Dataset):
             makedirs(self.save_dir)
             continue_processing = True
         if continue_processing:
-            self.dataset = self.initialize_dataset_pdb_ids(self.raw_dir)
+            self.dataset = self.initialize_dataset_pdb_ids()
             self.blacklisted = self.get_blacklisted_proteins()
             self.preprocess_pdb()
 
     def initialize_dataset_pdb_ids(self):
         available = defaultdict(list)
         for file in listdir(self.raw_dir):
-            available[file[:4]].add(file)
+            available[file[:4]].append(file)
         return available
 
     def get_blacklisted_proteins(self):
@@ -352,37 +391,26 @@ class scPDB(Dataset):
                 blacklisted[line.strip()] = True
         return blacklisted
 
-    # def get_sequences_from_rcsb(self):
-    #     sequences = defaultdict(str)
-    #     with open(RCSB_SEQUENCES) as file:
-    #         pdb_id = file.readline()[1:5]
-    #         for data in sorted(self.dataset):
-    #             while pdb_id != data[0]:
-    #                 file.readline()
-    #                 pdb_id = file.readline()[1:5]
-    #             # Each id can have multiple chains
-    #             while pdb_id == data[0]:
-    #                 seq = file.readline().strip()
-    #                 sequences[pdb_id] += seq
-    #                 pdb_id = file.readline()[1:5]
-    #     print(len(sequences))
-    #     return sequences
-
-    def init_complex_info(self, pdb_id_struct):
+    def init_complex_info(self, pdb_id_struct, chain_id):
         pdb_prefix = path.join(self.raw_dir, pdb_id_struct)
         self.protein_structure = parser.get_structure(
-            pdb_id_struct, path.join(pdb_prefix, "converted_protein.pdb")
+            pdb_id_struct, path.join(pdb_prefix, "tmp.pdb")
         )
-        # Including non-standard amino acids
-        # The letter in the sequence will be their standard amino acid counterpart
-        # For example, MSE (Selenomethionines) are shown as M (Methionine)
-        self.sequence = ""
         self.residues = []
-        for seq in ppb.build_peptides(self.protein_structure, aa_only=False):
-            self.sequence += str(seq.get_sequence())
-            for res in seq:
+        # Removing assertion TODO Need to check this
+        # assert len(self.protein_structure) == 1
+        for res in self.protein_structure[0][chain_id]:
+            id = res.get_id()
+            if is_aa(res, standard=False) and id[0] == " ":
                 self.residues.append(res)
-        # self.sequence = self.get_sequence_from_rcsb(pdb_id_struct)
+
+        self.sequence = ""
+        with open(path.join(pdb_prefix, chain_id + ".fasta")) as f:
+            line = f.readline()
+            line = f.readline()
+            while line != "" and line is not None:
+                self.sequence += line.strip()
+                line = f.readline()
 
         self.ligand_supplier = Chem.SDMolSupplier(
             path.join(pdb_prefix, "ligand.sdf"), sanitize=False
@@ -403,7 +431,8 @@ class scPDB(Dataset):
         contact with the ligand
         """
         labels = np.zeros(len(self.sequence))
-        for ind, residue in enumerate(self.residues):
+        for residue in self.residues:
+            res_ind = residue.get_id()[1] - 1
             for atom in residue.get_atoms():
                 if atom.get_fullname()[1] == "H":
                     continue
@@ -411,19 +440,20 @@ class scPDB(Dataset):
                     if self.ligand_atom_types[i] == "H":
                         continue
                     # We are considering the ligand to be in contact with the AA
-                    # if the distance between them is within 4.5A
-                    if np.linalg.norm(atom.get_coord() - self.ligand_coords[i]) <= 4.5:
-                        labels[ind] = 1
+                    # if the distance between them is within 5A
+                    if np.linalg.norm(atom.get_coord() - self.ligand_coords[i]) <= 5.0:
+                        labels[res_ind] = 1
                         break
                 # We know that the residue is in contact with ligand
                 # So go to the next residue
-                if labels[ind]:
+                if labels[res_ind]:
                     break
         return labels
 
-    def make_dictionary_for_storage(self, pdb_id):
+    def make_dictionary_for_storage(self, pdb_id, chain_id):
         data = {}
         data["pdb_id"] = pdb_id
+        data["chain_id"] = chain_id
         data["sequence"] = self.sequence
         data["length"] = len(data["sequence"])
         data["labels"] = self.find_residues_in_contact()
@@ -447,66 +477,59 @@ class scPDB(Dataset):
     def preprocess_pdb(self):
         for pdb_id in sorted(self.dataset):
             for pdb_id_struct in self.dataset[pdb_id]:
-                if not path.exists(
-                    path.join(self.raw_dir, pdb_id_struct, "converted_protein.pdb")
-                ):
-                    print("Converted PDB does not exist for %s" % pdb_id_struct)
+                pre = path.join(self.raw_dir, pdb_id_struct)
+                if not path.exists(path.join(pre, "downloaded.pdb")):
+                    print("Downloaded PDB does not exist for %s" % pdb_id_struct)
                     continue
                 if self.blacklisted[pdb_id_struct]:
                     continue
                 # print(pdb_id_struct)
-                if path.exists(path.join(self.save_dir, pdb_id_struct + ".npz")):
-                    continue
                 process_time_start = time()
-                self.init_complex_info(pdb_id_struct)
-                data = self.make_dictionary_for_storage(pdb_id_struct)
-                self.process_time += time() - process_time_start
+                for file in listdir(pre):
+                    if file[2:] != "fasta":
+                        continue
+                    chain_id = file[0]
+                    if path.exists(
+                        path.join(
+                            self.save_dir, pdb_id_struct + "_" + chain_id + ".npz"
+                        )
+                    ):
+                        continue
+                    try:
+                        dest = path.join(pre, "tmp.pdb")
+                        PDBtxt_reindex = reindex_pdb(
+                            path.join(pre, chain_id + ".fasta"),
+                            path.join(pre, "downloaded.pdb"),
+                            True,
+                        )
+                        if PDBtxt_reindex is None:
+                            print(
+                                pdb_id_struct,
+                                chain_id,
+                                "is a DNA/RNA sequence... Deleting fasta",
+                            )
+                            remove(path.join(pre, chain_id + ".fasta"))
+                            continue
+                        with open(dest, "w") as fp:
+                            fp.write(PDBtxt_reindex)
+                        self.init_complex_info(pdb_id_struct, chain_id)
+                        data = self.make_dictionary_for_storage(pdb_id_struct, chain_id)
+                        remove(dest)
+                    except:
+                        print(pdb_id_struct, chain_id)
+                        continue
+                    self.process_time += time() - process_time_start
 
-                write_time_start = time()
-                np.savez(path.join(self.save_dir, pdb_id_struct + ".npz"), **data)
-                self.write_time += time() - write_time_start
+                    write_time_start = time()
+                    np.savez(
+                        path.join(
+                            self.save_dir, pdb_id_struct + "_" + chain_id + ".npz"
+                        ),
+                        **data
+                    )
+                    self.write_time += time() - write_time_start
+            # break
         self.log_info()
-
-    # def preprocess_mol2(self):
-    #     # available = np.unique([el[:4] for el in listdir(self.raw_dir)])
-    #     # self.id_to_rcsb_seq = get_sequences_from_rcsb(available)
-    #     # print(len(self.id_to_rcsb_seq))
-    #     makedirs(self.save_dir)
-
-    #     for i, pdb_id in enumerate(sorted(listdir(self.raw_dir))):
-    #         pmol = PandasMol2().read_mol2(
-    #             path.join(self.raw_dir, pdb_id, "protein.mol2")
-    #         )
-    #         lmol = PandasMol2().read_mol2(
-    #             path.join(self.raw_dir, pdb_id, "ligand.mol2")
-    #         )
-    #         ligand_coords = lmol.df[lmol.df["atom_type"] != "H"][["x", "y", "z"]]
-    #         protein_heavy = pmol.df[pmol.df["atom_type"] != "H"]
-    #         binding_site = {}
-    #         for j, atom_coord in enumerate(ligand_coords.values):
-    #             pmol.df["distances"] = pmol.distance_df(protein_heavy, atom_coord)
-    #             cutoff = pmol.df[pmol.df["distances"] <= 4.5]
-    #             for k, aa in enumerate(cutoff.values):
-    #                 binding_site[aa[7]] = aa[6]
-    #         # sequence = self.id_to_rcsb_seq[pdb_id]
-    #         # TODO Get the sequence here
-    #         sequence = None
-    #         length = len(sequence)
-    #         labels = np.zeros(length)
-    #         for key, val in binding_site.items():
-    #             aa = THREE_TO_ONE[key[:3]]
-    #             offset = int(key[3:]) - int(val) + 1
-    #             pos = int(key[3:]) - offset
-    #             assert pos < length
-    #             assert sequence[pos] == aa
-    #             labels[pos] = 1
-    #         sequence = np.array([AA_ID_DICT[el] for el in sequence])
-    #         np.savez(
-    #             path.join(self.save_dir, pdb_id + ".npz"),
-    #             sequence=sequence,
-    #             length=length,
-    #             labels=labels,
-    #         )
 
 
 class Kalasanty(scPDB):
@@ -529,7 +552,7 @@ class Kalasanty(scPDB):
     def get_dataset(self):
         available = defaultdict(list)
         for file in listdir(self.save_dir):
-            available[file[:4]].append(file[:-4])
+            available[file[:4]].append(file[:-6])
 
         extras = ["scPDB_blacklist.txt", "scPDB_leakage.txt"]
         for file in extras:
@@ -555,15 +578,28 @@ class Kalasanty(scPDB):
 
     def __getitem__(self, index):
         pdb_id = self.dataset_list[index]
-        # Just taking the first available structure for a pdb
+        # Just taking the first available structure for a pdb #TODO
         pdb_id_struct = self.dataset[pdb_id][0]
-        sample = np.load(path.join(self.save_dir, pdb_id_struct + ".npz"))
-        sample = {
-            key: sample[key].item() if sample[key].shape is () else sample[key]
-            for key in sample
-        }
-        X = generate_input(sample)
-        y = torch.from_numpy(sample["labels"]).to(DEVICE)
+        flg = True
+        for file in sorted(glob(path.join(self.save_dir, pdb_id_struct + "*"))):
+            print(file)
+            chain_id = file[-len(".npz")-1:-len(".npz")]
+            sample = np.load(file)
+            sample = {
+                key: sample[key].item() if sample[key].shape is () else sample[key]
+                for key in sample
+            }
+            sample["pssm"] = get_pssm(pdb_id_struct, chain_id, sample["length"])
+            if flg:
+                X = generate_input(sample)
+                y = torch.from_numpy(sample["labels"]).to(DEVICE)
+                flg = False
+            else:
+                # Using concatenation strategy
+                tmp = generate_input(sample)
+                X["X"] = torch.cat((X["X"], tmp["X"]), 1)
+                X["length"] += tmp["length"]
+                y = torch.cat((y, torch.from_numpy(sample["labels"]).to(DEVICE)), 0)
         return X, y
 
     def __len__(self):
@@ -571,4 +607,6 @@ class Kalasanty(scPDB):
 
 
 if __name__ == "__main__":
-    data = Kalasanty()
+    scPDB(continue_processing=True)
+    # scPDB(overwrite=True)
+    # data = Kalasanty()
