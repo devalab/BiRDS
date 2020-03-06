@@ -44,7 +44,7 @@ def get_features(csv_file):
 
 AA_all_feats = get_features(path.join(PROJECT_FOLDER, "data/all_features.csv"))
 AA_sel_feats = get_features(path.join(PROJECT_FOLDER, "data/selected_features.csv"))
-feat_vec_len = 22
+feat_vec_len = 21
 # feat_vec_len += len(AA_all_feats["X"])
 feat_vec_len += len(AA_sel_feats["X"])
 
@@ -64,6 +64,7 @@ for line in lines:
         chain_id = chain_id[:-1]
         common_pssms[pdb_id_struct + "_" + chain_id] = pssm_generated_id
 
+
 def get_pssm(pdb_id_struct, chain_id, length):
     tmp = common_pssms[pdb_id_struct + "_" + chain_id]
     pdb_id_struct = tmp[:-2]
@@ -76,8 +77,10 @@ def get_pssm(pdb_id_struct, chain_id, length):
         feature[i] = torch.from_numpy(line)
     return feature
 
+
 # PSSM length
 feat_vec_len += 21
+
 
 def generate_input(sample):
     """
@@ -92,13 +95,13 @@ def generate_input(sample):
     X["X"][:21] = torch.from_numpy(sequence)
 
     # Positional encoding
-    X["X"][21] = torch.arange(1, X["length"] + 1, dtype=torch.float32) / X["length"]
+    # X["X"][21] = torch.arange(1, X["length"] + 1, dtype=torch.float32) / X["length"]
 
     # PSSM
-    X["X"][22:43] = sample["pssm"]
+    X["X"][21:42] = sample["pssm"]
 
     # AA Properties
-    X["X"][43:] = torch.from_numpy(
+    X["X"][42:] = torch.from_numpy(
         np.array([AA_sel_feats[aa] for aa in sample["sequence"]]).T
     )
 
@@ -548,6 +551,7 @@ class Kalasanty(scPDB):
         self.dataset_id_to_index = defaultdict(int)
         for i, val in enumerate(self.dataset_list):
             self.dataset_id_to_index[val] = i
+        # self.hlper = True
 
     def get_dataset(self):
         available = defaultdict(list)
@@ -581,9 +585,19 @@ class Kalasanty(scPDB):
         # Just taking the first available structure for a pdb #TODO
         pdb_id_struct = self.dataset[pdb_id][0]
         flg = True
+
+        # print(pdb_id_struct)
+        # if self.hlper and pdb_id_struct != "3r35_1":
+        #     X = {}
+        #     X["length"] = 10
+        #     X["X"] = torch.zeros(feat_vec_len, 10, device=DEVICE)
+        #     y = torch.zeros(10, device=DEVICE)
+        #     return X, y
+        # self.hlper = False
+
         for file in sorted(glob(path.join(self.save_dir, pdb_id_struct + "*"))):
             print(file)
-            chain_id = file[-len(".npz")-1:-len(".npz")]
+            chain_id = file[-len(".npz") - 1 : -len(".npz")]
             sample = np.load(file)
             sample = {
                 key: sample[key].item() if sample[key].shape is () else sample[key]
@@ -600,6 +614,8 @@ class Kalasanty(scPDB):
                 X["X"] = torch.cat((X["X"], tmp["X"]), 1)
                 X["length"] += tmp["length"]
                 y = torch.cat((y, torch.from_numpy(sample["labels"]).to(DEVICE)), 0)
+        # if pdb_id_struct == "3l70_2":
+        #     print(X, y)
         return X, y
 
     def __len__(self):

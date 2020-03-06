@@ -29,7 +29,7 @@ from utils import copy_code
 
 NET_DEFAULTS = {
     "optimizer": torch.optim.Adam,
-    "lr": 0.01,
+    "lr": 0.1,
     "max_epochs": 50,
     "batch_size": 1,
     "train_split": CVSplit(cv=0.1, random_state=42),
