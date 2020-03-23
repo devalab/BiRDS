@@ -1,3 +1,14 @@
+# Some constants that will be required
+# ALWAYS RUN THIS CODE CELL
+import os
+from glob import glob
+
+data_dir = os.path.abspath("../data/scPDB")
+raw_dir = os.path.join(data_dir, "raw")
+pssm_dir = os.path.join(data_dir, "pssm")
+splits_dir = os.path.join(data_dir, "splits")
+preprocessed_dir = os.path.join(data_dir, "preprocessed")
+
 # MAKING OF .npz FILES FROM HERE
 # Download NWalign.py, pdb2fasta.py and reindex_pdb.py
 # https://zhanglab.ccmb.med.umich.edu/NW-align/NWalign.py (Make small changes for Python3 compatibility)
@@ -87,21 +98,29 @@ def find_residues_in_contact(protein, ligand):
 
 def get_distance_map_true(protein, atom_type):
     length = len(protein["sequence"])
+    num_residues = len(protein["residues"]) # Might be different from length because of missing residues
     distance_map = np.full((length, length), np.inf)  # Initialize to infinite distance
-    for res1 in protein["residues"]:
+    for ind1 in range(num_residues):
+        res1 = protein["residues"][ind1]
         res1_ind = res1.get_id()[1] - 1
-        for res2 in protein["residues"]:
+        for ind2 in range(ind1 + 1, num_residues):
+            print(ind2)
+            res2 = protein["residues"][ind2]
             res2_ind = res2.get_id()[1] - 1
-            distance_map[res1_ind][res2_ind] = np.linalg.norm(
-                res1[atom_type].get_coord() - res2[atom_type].get_coord()
-            )
+            dist = np.linalg.norm(res1[atom_type].get_coord() - res2[atom_type].get_coord())
+            distance_map[res1_ind][res2_ind] = dist
+            distance_map[res2_ind][res1_ind] = dist
     np.fill_diagonal(distance_map, 0.0)
     return distance_map
 
+if not os.path.exists(preprocessed_dir):
+    os.mkdir(preprocessed_dir)
 
 process_time = 0
 write_time = 0
 for pdb_id_struct in sorted(os.listdir(raw_dir)):
+    if pdb_id_struct == "1bdm_2":
+        continue
     pre = os.path.join(raw_dir, pdb_id_struct)
     if not os.path.exists(os.path.join(pre, "downloaded.pdb")):
         print("Downloaded PDB does not exist for %s" % pdb_id_struct)
@@ -129,7 +148,7 @@ for pdb_id_struct in sorted(os.listdir(raw_dir)):
         )
         # set_trace()
         if PDBtxt_reindex is None:
-            print(pdb_id_struct, chain_id, "failed")
+            print(pdb_id_struct, chain_id, "reindex fail")
             continue
 
         with open(dest, "w") as fp:
@@ -146,6 +165,7 @@ for pdb_id_struct in sorted(os.listdir(raw_dir)):
         data["sequence"] = protein["sequence"]
         data["length"] = len(data["sequence"])
         data["labels"] = find_residues_in_contact(protein, ligand)
+        data["ca_dist_map_true"] = get_distance_map_true(protein, "CA")
         assert len(data["sequence"]) == len(data["labels"])
 
         # Remove the tmp.pdb file
@@ -162,3 +182,4 @@ for pdb_id_struct in sorted(os.listdir(raw_dir)):
 
 print("Processing time:", process_time)
 print("Write time:", write_time)
+

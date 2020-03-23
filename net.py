@@ -25,19 +25,19 @@ class Net(skorch.NeuralNet):
         lengths = X["lengths"]
         batch_size = len(lengths)
         # Use a variable criterion function
-        ones = 0.0
-        zeros = 0.0
-        for i in range(batch_size):
-            one = (y_true[i] == 1).float().sum()
-            zeros += lengths[i] - one
-            ones += one
-        pos_weight = torch.zeros(1, device=DEVICE, dtype=torch.float32)
+        # ones = 0.0
+        # zeros = 0.0
+        # for i in range(batch_size):
+        #     one = (y_true[i] == 1).float().sum()
+        #     zeros += lengths[i] - one
+        #     ones += one
+        # pos_weight = torch.zeros(1, device=DEVICE, dtype=torch.float32)
         # To avoid division by 0 which should not occur. Should check dataset
-        pos_weight[0] = (zeros + 1) / (ones + 1)
+        # pos_weight[0] = (zeros + 1) / (ones + 1)
         loss = 0
         for i in range(batch_size):
             loss += binary_cross_entropy_with_logits(
-                y_pred[i, : lengths[i]], y_true[i, : lengths[i]], pos_weight=pos_weight
+                y_pred[i, : lengths[i]], y_true[i, : lengths[i]]
             )
         loss /= batch_size
         return loss

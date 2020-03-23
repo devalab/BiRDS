@@ -24,12 +24,14 @@ from dataloader import (
 from models.resnet_1d import ResNet  # noqa: F401
 from models.transformer import Transformer  # noqa: F401
 from models.unet_1d import UNet  # noqa: F401
+from models.lstm import LSTM  # noqa: F401
+from models.resnet_lstm import ResNetLSTM  # noqa: F401
 from net import Net
 from utils import copy_code
 
 NET_DEFAULTS = {
     "optimizer": torch.optim.Adam,
-    "lr": 0.1,
+    "lr": 0.01,
     "max_epochs": 50,
     "batch_size": 1,
     "train_split": CVSplit(cv=0.1, random_state=42),
