@@ -30,7 +30,7 @@ class PositionalEncoding(nn.Module):
 
 class Transformer(nn.Module):
     def __init__(
-        self, feat_vec_len, ntoken=21, nhead=3, nhid=512, nlayers=2, dropout=0.5
+        self, feat_vec_len, ntoken=21, nhead=7, nhid=512, nlayers=2, dropout=0.5
     ):
         # ntoken: number of amino acids
         # nhead: the number of heads in the multiheadattention models
