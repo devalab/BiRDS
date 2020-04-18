@@ -111,7 +111,7 @@ venv.bak/
 !/outputs/**/.gitkeep
 
 /data/**
-!/data/**/
-!/data/**/.gitkeep
+!/data/AA_properties.csv
+!/data/obseleted.txt
 
 extras
