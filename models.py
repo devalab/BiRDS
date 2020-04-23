@@ -199,8 +199,36 @@ class ResNet(torch.nn.Module):
         return X
 
 
+class StackedConv(torch.nn.Module):
+    def __init__(
+        self, feat_vec_len, kernel_size=17, hidden_sizes=[32, 8, 1], dropout=0.0
+    ):
+        super(StackedConv, self).__init__()
+        self.conv_layers = torch.nn.ModuleList([])
+        self.depth = len(hidden_sizes)
+        self.dropout = torch.nn.Dropout(dropout, True)
+        for i in range(self.depth):
+            self.conv_layers.append(
+                torch.nn.Conv1d(
+                    in_channels=feat_vec_len,
+                    out_channels=hidden_sizes[i],
+                    kernel_size=kernel_size,
+                    padding=kernel_size // 2,
+                )
+            )
+            feat_vec_len = hidden_sizes[i]
+
+    def forward(self, X, lengths, **kwargs):
+        # [Batch, feat_vec_len, Max_length] -> [Batch, 1, Max_length]
+        output = X
+        for i in range(self.depth):
+            output = self.conv_layers[i](output)
+            self.dropout(output)
+        return output.squeeze(dim=1)
+
+
 class BiLSTM(torch.nn.Module):
-    def __init__(self, feat_vec_len, hidden_sizes=[32, 1], num_layers=2, dropout=0.5):
+    def __init__(self, feat_vec_len, hidden_sizes=[32, 1], num_layers=2, dropout=0.0):
         super(BiLSTM, self).__init__()
         self.feat_vec_len = feat_vec_len
         self.hidden_sizes = hidden_sizes
@@ -240,14 +268,37 @@ class BiLSTM(torch.nn.Module):
             output = output.mean(dim=2)
             self.dropout(output)
 
-        # [Max_length, Batch, hidden_sizes[-1]] -> [Batch, Max_length]
+        # [Max_length, Batch, 1] -> [Batch, Max_length]
         output = output.transpose(0, 1).squeeze(dim=2)
 
         return output
 
 
+class StackedNN(torch.nn.Module):
+    def __init__(self, feat_vec_len, hidden_sizes=[128, 32, 1], dropout=0.0):
+        super(StackedNN, self).__init__()
+        self.feat_vec_len = feat_vec_len
+        self.hidden_sizes = hidden_sizes
+        self.depth = len(hidden_sizes)
+        self.nn = torch.nn.ModuleList([])
+        self.dropout = torch.nn.Dropout(dropout, True)
+        for i in range(self.depth):
+            self.nn.append(
+                torch.nn.Linear(in_features=feat_vec_len, out_features=hidden_sizes[i],)
+            )
+            feat_vec_len = hidden_sizes[i]
+
+    def forward(self, X, lengths, **kwargs):
+        # [Batch, feat_vec_len, Max_length] -> [Batch, 1, Max_length]
+        output = X
+        for i in range(self.depth):
+            output = self.nn[i](output)
+            self.dropout(output)
+        return output.squeeze(dim=1)
+
+
 class BiGRU(torch.nn.Module):
-    def __init__(self, feat_vec_len, hidden_sizes=[32, 1], num_layers=2, dropout=0.5):
+    def __init__(self, feat_vec_len, hidden_sizes=[32, 1], num_layers=2, dropout=0.0):
         super(BiGRU, self).__init__()
         self.feat_vec_len = feat_vec_len
         self.hidden_sizes = hidden_sizes
@@ -318,7 +369,7 @@ class PositionalEncoding(torch.nn.Module):
 
 class Transformer(torch.nn.Module):
     def __init__(
-        self, feat_vec_len, ntoken=21, nhead=7, nhid=512, nlayers=2, dropout=0.5
+        self, feat_vec_len, ntoken=21, nhead=7, nhid=512, nlayers=2, dropout=0.0
     ):
         # ntoken: number of amino acids
         # nhead: the number of heads in the multiheadattention models
