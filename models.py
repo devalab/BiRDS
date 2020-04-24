@@ -60,19 +60,14 @@ class BasicBlock(torch.nn.Module):
 
 class MakeResNet(torch.nn.Module):
     def __init__(
-        self,
-        layers,
-        kernel_size,
-        feat_vec_len,
-        zero_init_residual=False,
-        norm_layer=None,
+        self, layers, kernel_size, feat_vec_len, hidden_sizes, norm_layer=None,
     ):
         super(MakeResNet, self).__init__()
         if norm_layer is None:
             norm_layer = torch.nn.BatchNorm1d
         self._norm_layer = norm_layer
 
-        self.start_planes = 64
+        self.start_planes = hidden_sizes[0]
         self.conv1 = torch.nn.Conv1d(
             in_channels=feat_vec_len,
             out_channels=self.start_planes,
@@ -82,11 +77,13 @@ class MakeResNet(torch.nn.Module):
         )
         self.bn1 = norm_layer(self.start_planes)
         self.relu = torch.nn.ReLU(inplace=True)
+        self.depth = len(hidden_sizes)
         # self.maxpool = torch.nn.MaxPool1d(kernel_size=3, stride=1, padding=1)
-        self.layer1 = self._make_layer(64, layers[0], kernel_size)
-        self.layer2 = self._make_layer(128, layers[1], kernel_size)
-        self.layer3 = self._make_layer(256, layers[2], kernel_size)
-        self.layer4 = self._make_layer(512, layers[3], kernel_size)
+        self.layers = torch.nn.ModuleList([])
+        for i in range(self.depth):
+            self.layers.append(
+                self._make_layer(hidden_sizes[i], layers[i], kernel_size)
+            )
 
         for m in self.modules():
             if isinstance(m, torch.nn.Conv1d):
@@ -96,14 +93,6 @@ class MakeResNet(torch.nn.Module):
             elif isinstance(m, (torch.nn.BatchNorm1d, torch.nn.GroupNorm)):
                 torch.nn.init.constant_(m.weight, 1)
                 torch.nn.init.constant_(m.bias, 0)
-
-        # Zero-initialize the last BN in each residual branch,
-        # so that the residual branch starts with zeros, and each
-        # residual block behaves like an identity.
-        # This improves the model by 0.2~0.3% according to https://arxiv.org/abs/1706.02677
-        if zero_init_residual:
-            for m in self.modules():
-                torch.nn.init.constant_(m.bn2.weight, 0)
 
     def _make_layer(self, out_planes, blocks, kernel_size):
         norm_layer = self._norm_layer
@@ -136,10 +125,8 @@ class MakeResNet(torch.nn.Module):
         x = self.relu(x)
         # x = self.maxpool(x)
 
-        x = self.layer1(x)
-        x = self.layer2(x)
-        x = self.layer3(x)
-        x = self.layer4(x)
+        for i in range(self.depth):
+            x = self.layers[i](x)
 
         return x
 
@@ -169,10 +156,22 @@ def resnet98(**kwargs):
 
 
 class ResNet(torch.nn.Module):
-    def __init__(self, feat_vec_len, resnet_layer="resnet6", num_units=64, dropout=0.0):
+    def __init__(
+        self,
+        feat_vec_len,
+        layers=[1, 1, 1, 1],
+        kernel_sizes=[3, 3],
+        hidden_sizes=[256, 128, 64, 32],
+        num_units=8,
+        dropout=0.0,
+    ):
         super(ResNet, self).__init__()
-        self.resnet_layer = globals()[resnet_layer](feat_vec_len=feat_vec_len)
-        self.fc1 = torch.nn.Linear(512, num_units)
+        assert len(layers) == len(hidden_sizes)
+        self.layers = layers
+        self.kernel_sizes = kernel_sizes
+        self.hidden_sizes = hidden_sizes
+        self.resnet_layer = MakeResNet(layers, kernel_sizes, feat_vec_len, hidden_sizes)
+        self.fc1 = torch.nn.Linear(hidden_sizes[-1], num_units)
         self.act1 = torch.nn.ReLU()
         self.dropout = torch.nn.Dropout(dropout)
         self.fc2 = torch.nn.Linear(num_units, 1)
@@ -289,12 +288,15 @@ class StackedNN(torch.nn.Module):
             feat_vec_len = hidden_sizes[i]
 
     def forward(self, X, lengths, **kwargs):
-        # [Batch, feat_vec_len, Max_length] -> [Batch, 1, Max_length]
-        output = X
+        # [Batch, feat_vec_len, Max_length] -> [Batch, Max_length, feat_vec_len]
+        output = X.transpose(1, 2)
+
+        # [Batch, Max_length, feat_vec_len] -> [Batch, Max_length, 1]
         for i in range(self.depth):
             output = self.nn[i](output)
             self.dropout(output)
-        return output.squeeze(dim=1)
+
+        return output.squeeze(dim=2)
 
 
 class BiGRU(torch.nn.Module):
