@@ -187,7 +187,6 @@ code_with_modified_residues = {
     "LLP": "X",
     "UNK": "X",
 }
-
 code_with_modified_residues["SEC"] = "X"
 code_with_modified_residues["PYL"] = "X"
 
