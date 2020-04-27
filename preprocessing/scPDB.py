@@ -227,6 +227,12 @@ parser = PDBParser()
 
 
 def initialize_protein_info(pdb_id_struct, chain_id):
+    """
+    pdb_id_struct: 10mh_1 from scPDB
+    chain_id: The chain that is being parsed
+
+    Returns: protein = {"structure": ..., "chainA": {"residues": ..., "seqeunce": ...}, ...}
+    """
     pre = os.path.join(raw_dir, pdb_id_struct)
     protein = {}
     protein["structure"] = parser.get_structure(
@@ -250,6 +256,11 @@ def initialize_protein_info(pdb_id_struct, chain_id):
 
 
 def initialize_ligand_info(pdb_id_struct):
+    """
+    pdb_id_struct: 10mh_1 from scPDB
+
+    Returns: ligand = {"supplier": ..., "coords": ..., "num_atoms": ..., "atom_types": ...}
+    """
     pre = os.path.join(raw_dir, pdb_id_struct)
     ligand = {}
     ligand["supplier"] = Chem.SDMolSupplier(
@@ -294,7 +305,14 @@ def find_residues_in_contact(protein, ligand, cutoff=5.0):
 
 
 def get_protein_ligand_dist(protein, ligand):
-    # Considering distance between ligand centroid and CB/CA atom of AA
+    """
+    protein: protein[chain] dictionary from initialize_protein_info
+    ligand: ligand dictionary from initialize_ligand_info
+
+    Returns: A numpy 1D array of shape (L,) where L is length of RCSB sequence
+            and the real numbers represent the distance of the ligand centroid
+            from the CB (CA) atom of the amino acid (Gly)
+    """
     centroid = ComputeCentroid(ligand["supplier"].GetConformer())
     centroid = np.array([centroid.x, centroid.y, centroid.z])
     dist = np.full(len(protein["sequence"]), 1e6)
@@ -310,28 +328,38 @@ def get_protein_ligand_dist(protein, ligand):
     return dist
 
 
-def get_distance_map_true(protein, atom_type):
-    length = len(protein["sequence"])
-    num_residues = len(
-        protein["residues"]
-    )  # Might be different from length because of missing residues
-    # Don't use np.inf, use a large number
-    distance_map = np.full((length, length), 1e6)  # Initialize to infinite distance
+def get_distance_map_true(protein):
+    """
+    protein: protein[chain] dictionary from initialize_protein_info
+
+    Returns: A 2D numpy array of shape (L, L) where L is the length of the RCSB sequence
+            and the real numbers of row i and column j represents the distance between
+            the CB (CA) of i'th amino acid (Gly) and CB (CA) of j'th amino acid (Gly)
+    """
+    seq_len = len(protein["sequence"])
+    # Might be different from seq_len because of missing residues
+    num_residues = len(protein["residues"])
+    # Don't use np.inf, use an impossibly large number
+    distance_map = np.full((seq_len, seq_len), 1e6)  # Initialize to infinite distance
+    at1 = at2 = "CB"
     for ind1 in range(num_residues):
         res1 = protein["residues"][ind1]
-        if res1.has_id(atom_type) is False:
-            continue
+        if not res1.has_id("CB"):
+            at1 = "CA"
+            if not res1.has_id("CA"):
+                continue
         res1_ind = res1.get_id()[1] - 1
         for ind2 in range(ind1 + 1, num_residues):
             res2 = protein["residues"][ind2]
-            if res2.has_id(atom_type) is False:
-                continue
+            if not res2.has_id("CB"):
+                at2 = "CA"
+                if not res2.has_id("CA"):
+                    continue
             res2_ind = res2.get_id()[1] - 1
-            dist = np.linalg.norm(
-                res1[atom_type].get_coord() - res2[atom_type].get_coord()
-            )
+            dist = np.linalg.norm(res1[at1].get_coord() - res2[at2].get_coord())
             distance_map[res1_ind][res2_ind] = dist
             distance_map[res2_ind][res1_ind] = dist
+    # Fill the diagonal with 0's
     np.fill_diagonal(distance_map, 0.0)
     return distance_map
 
@@ -367,7 +395,7 @@ for pdb_id_struct in sorted(os.listdir(raw_dir)):
             os.path.join(pre, "downloaded.pdb"),
             True,
         )
-        # set_trace()
+
         if PDBtxt_reindex is None:
             print(pdb_id_struct, chain_id, "reindex fail")
             continue
@@ -388,8 +416,7 @@ for pdb_id_struct in sorted(os.listdir(raw_dir)):
             data["length"] = len(data["sequence"])
             data["labels"] = find_residues_in_contact(protein, ligand)
             # For structure-based prediction
-            data["ca_dist_map_true"] = get_distance_map_true(protein, "CA")
-            data["cb_dist_map_true"] = get_distance_map_true(protein, "CB")
+            data["dist_map_true"] = get_distance_map_true(protein)
             # For penalising the loss function better
             data["prot_lig_dist"] = get_protein_ligand_dist(protein, ligand)
             assert len(data["sequence"]) == len(data["labels"])
@@ -425,6 +452,7 @@ from matplotlib import cm as cm
 
 tmp_df = pd.read_csv("../data/AA_properties.csv", sep=",")
 df = tmp_df.iloc[:, 7:].T
+
 
 # Function used to normalize the values between 0 and 1
 def normalize(df):
@@ -472,15 +500,13 @@ normalize(features).to_csv("../data/selected_features.csv")
 # %%
 # Assuming that all the PSSMs have been copied to data/scPDB/pssm
 # We can have more features included as well. For now, let us consider PSSMs
-# !rsync -avP --include="*/" --include="*pssm" --exclude="*" ~/Git/msa-generator/data/scPDB/ ~/Git/protein-binding-site-prediction/data/scPDB/pssm/
-
-# Get amino acid properties from the created files above
 import csv
 from collections import defaultdict
 
 import numpy as np
 
 
+# Get amino acid properties from the created files above
 def get_amino_acid_properties(csv_file):
     feats = {}
     with open(csv_file) as f:
@@ -565,20 +591,13 @@ feat_vec_len += len(AA_sel_feats["X"])
 
 
 # %%
-# Now, let us preprocess the files again to generate the features
-# directly that can be imported into pytorch easily
-# For that we can define the 2 cells below where the generate_input function
-# can be used to generate various types of inputss
+# Now, let us preprocess the files again to generate the features directly that can be imported into pytorch easily
+# For that we can define the generate_input function which can be used to generate various types of inputs
+import numpy as np
 
 
-# %%
 # Without using distance map
-
-
 def generate_input(sample):
-    """
-    Generate input for a single sample
-    """
     X = np.zeros((feat_vec_len, sample["length"]))
 
     # One-hot encoding
@@ -596,14 +615,11 @@ def generate_input(sample):
     return X
 
 
-# Using the distance map to pick the closes 20 residues and creating features for each amino acid
-# independent of the total protein structure
-# Let us not use one-hot and positional encoding to save space and include distance?
+# Using the distance map to pick the closest 20 residues and creating features for each amino acid
 # Amino acid no. + Distance from curr. aa + PSSM + AA Properties
 
-# feat_vec_len = 1 + 1 + 21 + len(AA_sel_feats["X"])
-# close_aa = 10
-# import numpy as np
+feat_vec_len = 21 + 1 + 21 + len(AA_sel_feats["X"])
+close_aa = 20
 
 
 # def generate_input(sample):
@@ -621,10 +637,12 @@ def generate_input(sample):
 #                 # Implies we don't have structural info about any AA after this
 #                 break
 #             aa = sample["sequence"][idx]
-#             X[j * feat_vec_len, i] = AA_ID_DICT[aa] / 20
-#             X[j * feat_vec_len + 1, i] = aa_dist[idx]
-#             X[j * feat_vec_len + 2 : j * feat_vec_len + 2 + 21, i] = sample["pssm"][:, idx]
-#             X[j * feat_vec_len + 2 + 21 : (j + 1) * feat_vec_len, i] = np.array(AA_sel_feats[aa])
+#             X[j * feat_vec_len : j * feat_vec_len + 21, i] = np.eye(21)[AA_ID_DICT[aa]]
+#             X[j * feat_vec_len + 21, i] = aa_dist[idx]
+#             X[j * feat_vec_len + 22 : j * feat_vec_len + 43, i] = sample["pssm"][:, idx]
+#             X[j * feat_vec_len + 43 : (j + 1) * feat_vec_len, i] = np.array(
+#                 AA_sel_feats[aa]
+#             )
 #     return X
 
 
@@ -661,71 +679,70 @@ def generate_input(sample):
 # %%
 # USING CONCATENATION STRATEGY
 
-# for pdb_id_struct in sorted(os.listdir(preprocessed_dir)):
-#     flg = True
-#     pre = os.path.join(preprocessed_dir, pdb_id_struct)
-#     features_file = os.path.join(pre, "features.npy")
-#     labels_file = os.path.join(pre, "labels.npy")
+for pdb_id_struct in sorted(os.listdir(preprocessed_dir)):
+    flg = True
+    pre = os.path.join(preprocessed_dir, pdb_id_struct)
+    features_file = os.path.join(pre, "features.npy")
+    labels_file = os.path.join(pre, "labels.npy")
 
-#     if os.path.exists(labels_file):
-#         continue
+    if os.path.exists(labels_file):
+        continue
+    print(pdb_id_struct)
+
+    for file in sorted(os.listdir(pre)):
+        # In case features were generated but not labels, redo it
+        if file == "features.npy":
+            continue
+        chain_id = file[-len(".npz") - 1 : -len(".npz")]
+        sample = np.load(os.path.join(pre, file))
+        sample = {
+            key: sample[key].item() if sample[key].shape == () else sample[key]
+            for key in sample
+        }
+        sample["pssm"] = get_pssm(pdb_id_struct, chain_id, sample["length"])
+        if flg:
+            X = generate_input(sample)
+            y = sample["labels"]
+            flg = False
+        else:
+            # Using concatenation strategy
+            tmp = generate_input(sample)
+            X = np.concatenate((X, tmp), 1)
+            y = np.concatenate((y, sample["labels"]), 0)
+
+    np.save(features_file, X)
+    np.save(labels_file, y)
+
+
+# SAVING ALL CHAINS AS DIFFERENT PROTEINS
+# for pdb_id_struct in sorted(os.listdir(preprocessed_dir)):
+#     pre = os.path.join(preprocessed_dir, pdb_id_struct)
 #     print(pdb_id_struct)
 
 #     for file in sorted(os.listdir(pre)):
 #         # In case features were generated but not labels, redo it
-#         if file == "features.npy":
+#         if not file.endswith(".npz"):
 #             continue
 #         chain_id = file[-len(".npz") - 1 : -len(".npz")]
+#         features_file = os.path.join(pre, "features" + chain_id + ".npy")
+#         labels_file = os.path.join(pre, "labels" + chain_id + ".npy")
+#         if os.path.exists(features_file) and os.path.exists(labels_file):
+#             continue
 #         sample = np.load(os.path.join(pre, file))
 #         sample = {
 #             key: sample[key].item() if sample[key].shape is () else sample[key]
 #             for key in sample
 #         }
 #         sample["pssm"] = get_pssm(pdb_id_struct, chain_id, sample["length"])
-#         if flg:
-#             X = generate_input(sample)
-#             y = sample["labels"]
-#             flg = False
-#         else:
-#             # Using concatenation strategy
-#             tmp = generate_input(sample)
-#             X = np.concatenate((X, tmp), 1)
-#             y = np.concatenate((y, sample["labels"]), 0)
+#         X = generate_input(sample)
+#         y = sample["labels"]
 
-#     np.save(features_file, X)
-#     np.save(labels_file, y)
-
-
-# SAVING ALL CHAINS AS DIFFERENT PROTEINS
-for pdb_id_struct in sorted(os.listdir(preprocessed_dir)):
-    pre = os.path.join(preprocessed_dir, pdb_id_struct)
-    print(pdb_id_struct)
-
-    for file in sorted(os.listdir(pre)):
-        # In case features were generated but not labels, redo it
-        if not file.endswith(".npz"):
-            continue
-        chain_id = file[-len(".npz") - 1 : -len(".npz")]
-        features_file = os.path.join(pre, "features" + chain_id + ".npy")
-        labels_file = os.path.join(pre, "labels" + chain_id + ".npy")
-        if os.path.exists(features_file) and os.path.exists(labels_file):
-            continue
-        sample = np.load(os.path.join(pre, file))
-        sample = {
-            key: sample[key].item() if sample[key].shape is () else sample[key]
-            for key in sample
-        }
-        sample["pssm"] = get_pssm(pdb_id_struct, chain_id, sample["length"])
-        X = generate_input(sample)
-        y = sample["labels"]
-
-        np.save(features_file, X)
-        np.save(labels_file, y)
+#         np.save(features_file, X)
+#         np.save(labels_file, y)
 
 
 # %%
 # Let us save the above files and store in a safe space
-# DON'T USE
 
 
 def archive_dir(folder, pattern, name):
@@ -738,12 +755,10 @@ def archive_dir(folder, pattern, name):
         if inp[0].lower() == "n":
             return
     # Using only a single ! command since multiple ! spawn different bash shells
-
-
-# For some reason, the below code is doubling the contents of the tar file
-# !cd $parent_dir; find $folder -name "$pattern" | tar --sort=name -I zstd -cf $name -T -; rsync -avP $name crvineeth97@ada:/share2/crvineeth97/compressed/scPDB; cd -
-# To untar, use
-# !tar -I zstd -xf $name
+    # For some reason, the below code is doubling the contents of the tar file
+    # !cd $parent_dir; find $folder -name "$pattern" | tar --sort=name -I zstd -cf $name -T -; rsync -avP $name crvineeth97@ada:/share2/crvineeth97/compressed/scPDB; cd -
+    # To untar, use
+    # !tar -I zstd -xf $name
 
 
 # archive_dir(raw_dir, "*", "raw.tar.zst")
