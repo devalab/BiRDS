@@ -1,7 +1,8 @@
 import math
+
 import torch
-from torch.nn.utils.rnn import pack_padded_sequence, pad_packed_sequence
 import torch.nn.functional as F
+from torch.nn.utils.rnn import pack_padded_sequence, pad_packed_sequence
 
 
 class BasicBlock(torch.nn.Module):

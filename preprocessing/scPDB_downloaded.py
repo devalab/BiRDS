@@ -42,7 +42,7 @@ for pdb_id_struct in sorted(os.listdir(raw_dir)):
             urllib.request.urlretrieve(
                 "http://files.rcsb.org/download/" + pdb_id + ".pdb", pdb_save
             )
-        except:
+        except:  # noqa: E722
             print("Err: pdb " + pdb_id)
 
     fasta_save = os.path.join(raw_dir, pdb_id_struct, "sequence.fasta")
@@ -54,7 +54,7 @@ for pdb_id_struct in sorted(os.listdir(raw_dir)):
                 + "&compressionType=uncompressed",
                 fasta_save,
             )
-        except:
+        except:  # noqa: E722
             print("Err: fasta " + pdb_id)
 
 
@@ -220,7 +220,7 @@ from Bio import BiopythonWarning
 from Bio.PDB import PDBParser, is_aa
 from rdkit import Chem
 from rdkit.Chem.rdMolTransforms import ComputeCentroid
-from .reindex_pdb import reindex_pdb
+from preprocessing.utils.reindex_pdb import reindex_pdb
 
 warnings.simplefilter("ignore", BiopythonWarning)
 parser = PDBParser()
@@ -420,7 +420,7 @@ for pdb_id_struct in sorted(os.listdir(raw_dir)):
             # For penalising the loss function better
             data["prot_lig_dist"] = get_protein_ligand_dist(protein, ligand)
             assert len(data["sequence"]) == len(data["labels"])
-        except:
+        except:  # noqa: E722
             print(pdb_id_struct, chain_id, "dictionary fail")
             continue
 
@@ -756,7 +756,8 @@ def archive_dir(folder, pattern, name):
             return
     # Using only a single ! command since multiple ! spawn different bash shells
     # For some reason, the below code is doubling the contents of the tar file
-    # !cd $parent_dir; find $folder -name "$pattern" | tar --sort=name -I zstd -cf $name -T -; rsync -avP $name crvineeth97@ada:/share2/crvineeth97/compressed/scPDB; cd -
+    # !cd $parent_dir; find $folder -name "$pattern" | tar --sort=name -I zstd -cf $name -T -;
+    # rsync -avP $name crvineeth97@ada:/share2/crvineeth97/compressed/scPDB; cd -
     # To untar, use
     # !tar -I zstd -xf $name
 

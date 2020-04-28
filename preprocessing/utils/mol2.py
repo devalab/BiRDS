@@ -1,10 +1,10 @@
-import pandas as pd
 from collections import OrderedDict
-from .NWalign import (
-    code_with_modified_residues as aa3to1,
-    calcualte_score_gotoh,
-    trace_back_gotoh,
-)
+
+import pandas as pd
+
+from preprocessing.utils.NWalign import calcualte_score_gotoh
+from preprocessing.utils.NWalign import code_with_modified_residues as aa3to1
+from preprocessing.utils.NWalign import trace_back_gotoh
 
 
 class Mol2:

@@ -1,11 +1,12 @@
 #!/usr/bin/env python
 # 2016-04-27 Chengxin Zhang
-import sys
-import os
-import textwrap
-from NWalign import code_with_modified_residues
 import gzip
+import os
+import sys
 import tarfile
+import textwrap
+
+from preprocessing.utils.NWalign import code_with_modified_residues
 
 docstring = """
 pdb2fasta.py pdb.pdb > seq.fasta

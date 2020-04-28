@@ -1,16 +1,17 @@
 # Assuming that preprocessing has been completed from preprocessing folder
 # We define a dataset based on the preprocessed data
-import torch
-from collections import defaultdict
 import os
+from collections import defaultdict
 
 import numpy as np
+import torch
 from torch.utils.data import Dataset
 
 data_dir = os.path.abspath("./data/scPDB")
 splits_dir = os.path.join(data_dir, "splits")
 preprocessed_dir = os.path.join(data_dir, "preprocessed")
 device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+
 
 # A collate function to merge samples into a minibatch, will be used by DataLoader
 def collate_fn(samples):
@@ -70,7 +71,7 @@ class Kalasanty(Dataset):
             del available[key]
 
         return available
-    
+
     def compute_class_weights(self):
         print("Precomputing class weights...")
         zeros = 0
@@ -91,7 +92,7 @@ class Kalasanty(Dataset):
         for i in range(10):
             train_indices = [self.dataset_id_to_index[el] for el in self.train_folds[i]]
             valid_indices = [self.dataset_id_to_index[el] for el in self.valid_folds[i]]
-#             yield train_indices[:24], valid_indices[:24]
+            #             yield train_indices[:24], valid_indices[:24]
             yield train_indices, valid_indices
 
     def __getitem__(self, index):
@@ -131,7 +132,7 @@ class KalasantyChains(Dataset):
         if precompute_class_weights:
             # Already computed the weight from above
             self.pos_weight = [11238357 / 356850]
-    
+
     def get_dataset(self):
         chains = defaultdict(list)
         for folder in sorted(os.listdir(preprocessed_dir)):
@@ -153,17 +154,25 @@ class KalasantyChains(Dataset):
         for i in range(10):
             train_indices = [self.dataset_id_to_index[el] for el in self.train_folds[i]]
             valid_indices = [self.dataset_id_to_index[el] for el in self.valid_folds[i]]
-#             yield train_indices[:24], valid_indices[:24]
+            #             yield train_indices[:24], valid_indices[:24]
             yield train_indices, valid_indices
 
     def __getitem__(self, index):
         pdb_id_struct, chain_id = self.dataset_list[index].split("/")
-#         print(pdb_id_struct, chain_id)
+        #         print(pdb_id_struct, chain_id)
         X = torch.from_numpy(
-            np.load(os.path.join(preprocessed_dir, pdb_id_struct, "features" + chain_id + ".npy"))
+            np.load(
+                os.path.join(
+                    preprocessed_dir, pdb_id_struct, "features" + chain_id + ".npy"
+                )
+            )
         )
         y = torch.from_numpy(
-            np.load(os.path.join(preprocessed_dir, pdb_id_struct, "labels" + chain_id + ".npy"))
+            np.load(
+                os.path.join(
+                    preprocessed_dir, pdb_id_struct, "labels" + chain_id + ".npy"
+                )
+            )
         )
         # print(X.shape, y.shape)
         return X, y

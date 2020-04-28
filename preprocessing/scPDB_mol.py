@@ -41,7 +41,7 @@ for pdb_id_struct in sorted(os.listdir(raw_dir)):
                 + "&compressionType=uncompressed",
                 fasta_save,
             )
-        except:
+        except:  # noqa: E722
             print("Err: fasta " + pdb_id)
 
 
@@ -67,7 +67,7 @@ for pdb_id_struct in sorted(os.listdir(raw_dir)):
 # Download NWalign.py to use Needlman Wunsch algorithm to align sequences
 # https://zhanglab.ccmb.med.umich.edu/NW-align/NWalign.py (Make small changes for Python3 compatibility)
 # 4egb_5 is an obseleted PDB and hence has chain E, had to manually add E to sequence.fasta
-from .mol2 import Mol2
+from preprocessing.utils.mol2 import Mol2
 
 for pdb_id_struct in sorted(os.listdir(raw_dir)):
     pre = os.path.join(raw_dir, pdb_id_struct)
@@ -358,7 +358,7 @@ for pdb_id_struct in sorted(os.listdir(raw_dir)):
             data["dist_map_true"] = get_distance_map_true(protein[chain_id])
             # For penalising the loss function better
             data["prot_lig_dist"] = get_protein_ligand_dist(protein[chain_id], ligand)
-        except:
+        except:  # noqa: E722
             print(pdb_id_struct, chain_id, "dictionary fail")
             continue
 
@@ -685,7 +685,8 @@ def archive_dir(folder, pattern, name):
             return
     # Using only a single ! command since multiple ! spawn different bash shells
     # For some reason, the below code is doubling the contents of the tar file
-    # !cd $parent_dir; find $folder -name "$pattern" | tar --sort=name -I zstd -cf $name -T -; rsync -avP $name crvineeth97@ada:/share2/crvineeth97/compressed/scPDB; cd -
+    # !cd $parent_dir; find $folder -name "$pattern" | tar --sort=name -I zstd -cf $name -T -;
+    # rsync -avP $name crvineeth97@ada:/share2/crvineeth97/compressed/scPDB; cd -
     # To untar, use
     # !tar -I zstd -xf $name
 

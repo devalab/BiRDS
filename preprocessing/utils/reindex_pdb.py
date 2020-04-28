@@ -1,6 +1,6 @@
 #!/usr/bin/env python
-import sys
 import os
+import sys
 
 docstring = """
 reindex_pdb.py startindex infile.pdb outfile.pdb
@@ -81,8 +81,8 @@ def reindex_pdb_by_sequence(sequence_ref, PDBtxt, chain_id):
     unaligned residues in sequence_pdb will be removed.
     only ATOM or MSE will be parsed
     """
-    #### convert PDB to fasta ####
-    from pdb2fasta import pdbtxt2seq
+    # convert PDB to fasta ####
+    from preprocessing.utils.pdb2fasta import pdbtxt2seq
 
     header_list, sequence_list = pdbtxt2seq(PDBtxt, PERMISSIVE="MSE", allowX=True)
     index = None
@@ -94,8 +94,8 @@ def reindex_pdb_by_sequence(sequence_ref, PDBtxt, chain_id):
         return None
     sequence_pdb = sequence_list[index]
 
-    #### perform NeedlemanWunsch ####
-    from NWalign import calcualte_score_gotoh, trace_back_gotoh
+    # perform NeedlemanWunsch ####
+    from preprocessing.utils.NWalign import calcualte_score_gotoh, trace_back_gotoh
 
     # idir (DP path); jpV (Horizontal jump number); jpH (Vertical jump number)
     idir, jpV, jpH = calcualte_score_gotoh(sequence_ref, sequence_pdb)
@@ -104,7 +104,7 @@ def reindex_pdb_by_sequence(sequence_ref, PDBtxt, chain_id):
         idir, jpV, jpH, sequence_ref, sequence_pdb
     )
 
-    #### reindex PDB text ####
+    # reindex PDB text ####
     PDBtxt_reindex = ""
     current_old_index = ""  # residue number in origin PDB
 
@@ -149,7 +149,7 @@ def reindex_pdb(startindex, infile, clean=True):
     """parse PDB file "infile", reindex it according to start index or
     sequence file "startindex", and return the text of renumbered PDB
     """
-    from NWalign import code_with_modified_residues
+    from preprocessing.utils.NWalign import code_with_modified_residues
 
     fp = open(infile, "rU")
     PDBtxt = ""
@@ -186,7 +186,7 @@ def reindex_pdb(startindex, infile, clean=True):
     fp.close()
 
     if os.path.isfile(startindex):
-        from NWalign import readFastaOrRawSequence
+        from preprocessing.utils.NWalign import readFastaOrRawSequence
 
         sequence_ref = readFastaOrRawSequence(startindex).replace("-", "")
         # Replace celenocystein with X (U with X)
@@ -199,7 +199,7 @@ def reindex_pdb(startindex, infile, clean=True):
 
 
 if __name__ == "__main__":
-    #### parse commandline arguments ####
+    # parse commandline arguments ####
     clean = True
 
     argv = []
@@ -216,13 +216,13 @@ if __name__ == "__main__":
         sys.stderr.write(docstring)
         exit()
 
-    #### parse PDB file ####
+    # parse PDB file ####
     PDBtxt_reindex = reindex_pdb(argv[0], argv[1], clean)
     if PDBtxt_reindex is None:
         print("The given sequence is a DNA/RNA sequence")
         exit(1)
 
-    #### write PDB file ####
+    # write PDB file ####
     if len(argv) > 1:
         fp = open(argv[2], "w")
         fp.write(PDBtxt_reindex)

@@ -951,7 +951,7 @@ def calcualte_score_gotoh(
     """Calculate the dynamic programming matrix using Gotoh algorithm.
     Return these matrices: idir, jpV,jpH
     idir - Path
-        \ : match-mismatch
+        \ : match-mismatch # noqa: W605
         - : horizontal gap (deletion)
         | : vertical gap   (insertion)
     jpV - horizontal long gap number
