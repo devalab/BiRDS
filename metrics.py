@@ -2,7 +2,6 @@ import torch
 from torch.nn.functional import binary_cross_entropy_with_logits
 
 SMOOTH = 1e-6
-device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
 
 def IOU(output, target):
@@ -55,7 +54,7 @@ def LOSS(output, target, pos_weight=None, criterion=None):
     if pos_weight is None:
         ones = (target == 1).float().sum()
         zeros = len(target) - ones
-        pos_weight = torch.Tensor([(zeros + SMOOTH) / (ones + SMOOTH)], device=device)
+        pos_weight = torch.Tensor([(zeros + SMOOTH) / (ones + SMOOTH)])
     return binary_cross_entropy_with_logits(output, target, pos_weight=pos_weight)
 
 
@@ -80,12 +79,12 @@ def batch_metrics(outputs, targets, lengths, reduction="mean"):
         target = targets[i, : lengths[i]].bool()
         cm = CM(output, target)
         metrics = {
-            "iou": IOU(output, target).item(),
-            "mcc": MCC(cm).item(),
-            "precision": PRECISION(cm).item(),
-            "recall": RECALL(cm).item(),
-            "f1": F1(cm).item(),
-            "acc": ACCURACY(cm).item(),
+            "iou": IOU(output, target),
+            "mcc": MCC(cm),
+            "precision": PRECISION(cm),
+            "recall": RECALL(cm),
+            "f1": F1(cm),
+            "acc": ACCURACY(cm),
         }
         if i == 0:
             running_metrics = metrics

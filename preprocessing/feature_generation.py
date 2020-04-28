@@ -14,56 +14,56 @@ preprocessed_dir = os.path.join(data_dir, "preprocessed")
 # https://www.ncbi.nlm.nih.gov/pmc/articles/PMC2238890/
 # The file AA_properties in the data folder contains all the values
 # We will take only the features which are the least correlated as our features
-import matplotlib.pyplot as plt
-import numpy as np
-import pandas as pd
-from matplotlib import cm as cm
+# import matplotlib.pyplot as plt
+# import numpy as np
+# import pandas as pd
+# from matplotlib import cm as cm
 
-tmp_df = pd.read_csv("../data/AA_properties.csv", sep=",")
-df = tmp_df.iloc[:, 7:].T
-
-
-# Function used to normalize the values between 0 and 1
-def normalize(df):
-    result = df.copy()
-    for feature_name in df.columns:
-        max_value = df[feature_name].max()
-        min_value = df[feature_name].min()
-        result[feature_name] = (df[feature_name] - min_value) / (max_value - min_value)
-    return result
+# tmp_df = pd.read_csv("../data/AA_properties.csv", sep=",")
+# df = tmp_df.iloc[:, 7:].T
 
 
-# A way to view the correlation matrix
-def correlation_matrix(df):
-    fig = plt.figure()
-    ax1 = fig.add_subplot(111)
-    cmap = cm.get_cmap("jet", 30)
-    cax = ax1.imshow(df.corr(), interpolation="nearest", cmap=cmap)
-    ax1.grid(True)
-    plt.title("Feature Correlation")
-    labels = np.arange(0, len(df), 1)
-    ax1.set_xticklabels(labels, fontsize=6)
-    ax1.set_yticklabels(labels, fontsize=6)
-    # Add colorbar, make sure to specify tick locations to match desired ticklabels
-    fig.colorbar(cax, ticks=np.arange(-1.1, 1.1, 0.1))
-    plt.show()
+# # Function used to normalize the values between 0 and 1
+# def normalize(df):
+#     result = df.copy()
+#     for feature_name in df.columns:
+#         max_value = df[feature_name].max()
+#         min_value = df[feature_name].min()
+#         result[feature_name] = (df[feature_name] - min_value) / (max_value - min_value)
+#     return result
 
 
-# Using spearman correlation
-corr = df.corr("spearman")
-threshold = 0.6
-columns = np.full((corr.shape[0],), True, dtype=bool)
-for i in range(corr.shape[0]):
-    for j in range(i + 1, corr.shape[0]):
-        if corr.iloc[i, j] >= threshold or corr.iloc[i, j] <= -threshold:
-            if columns[j]:
-                columns[j] = False
-selected_columns = df.columns[columns]
-features = df[selected_columns]
+# # A way to view the correlation matrix
+# def correlation_matrix(df):
+#     fig = plt.figure()
+#     ax1 = fig.add_subplot(111)
+#     cmap = cm.get_cmap("jet", 30)
+#     cax = ax1.imshow(df.corr(), interpolation="nearest", cmap=cmap)
+#     ax1.grid(True)
+#     plt.title("Feature Correlation")
+#     labels = np.arange(0, len(df), 1)
+#     ax1.set_xticklabels(labels, fontsize=6)
+#     ax1.set_yticklabels(labels, fontsize=6)
+#     # Add colorbar, make sure to specify tick locations to match desired ticklabels
+#     fig.colorbar(cax, ticks=np.arange(-1.1, 1.1, 0.1))
+#     plt.show()
 
-# Saving all the features and the selected features
-normalize(df).to_csv("../data/all_features.csv")
-normalize(features).to_csv("../data/selected_features.csv")
+
+# # Using spearman correlation
+# corr = df.corr("spearman")
+# threshold = 0.6
+# columns = np.full((corr.shape[0],), True, dtype=bool)
+# for i in range(corr.shape[0]):
+#     for j in range(i + 1, corr.shape[0]):
+#         if corr.iloc[i, j] >= threshold or corr.iloc[i, j] <= -threshold:
+#             if columns[j]:
+#                 columns[j] = False
+# selected_columns = df.columns[columns]
+# features = df[selected_columns]
+
+# # Saving all the features and the selected features
+# normalize(df).to_csv("../data/all_features.csv")
+# normalize(features).to_csv("../data/selected_features.csv")
 
 
 # %%
@@ -154,7 +154,7 @@ AA_sel_feats = get_amino_acid_properties(
 # %%
 # Now, let us preprocess the files again to generate the features directly that can be imported into pytorch easily
 # For that we can define the generate_input function which can be used to generate various types of inputs
-import numpy as np
+import numpy as np  # noqa: F811
 
 
 # Without using distance map
@@ -188,7 +188,7 @@ def generate_input(sample):
 
 # def generate_input(sample):
 #     X = np.zeros((feat_vec_len * close_aa, sample["length"]))
-#     for i, aa_dist in enumerate(sample["ca_dist_map_true"]):
+#     for i, aa_dist in enumerate(sample["dist_map_true"]):
 #         if sample["length"] <= close_aa:
 #             indices = np.argsort(aa_dist)
 #         else:
@@ -226,7 +226,7 @@ def generate_input(sample):
 #     X[43:] = np.array([AA_sel_feats[aa] for aa in sample["sequence"]]).T
 
 #     # Invert the distance map and matrix multiply with X so that we get a combination of all features
-#     inverted_dist = 1 / sample["ca_dist_map_true"]
+#     inverted_dist = 1 / sample["dist_map_true"]
 #     np.fill_diagonal(inverted_dist, 1.0)
 #     X_T = inverted_dist.dot(X.T)
 #     for i in range(sample["length"]):
@@ -243,20 +243,17 @@ def generate_input(sample):
 # %%
 # USING CONCATENATION STRATEGY
 
+# For creating features
 for pdb_id_struct in sorted(os.listdir(preprocessed_dir)):
     flg = True
     pre = os.path.join(preprocessed_dir, pdb_id_struct)
     features_file = os.path.join(pre, "features.npy")
-    labels_file = os.path.join(pre, "labels.npy")
 
-    if os.path.exists(labels_file):
+    if os.path.exists(features_file):
         continue
     print(pdb_id_struct)
 
     for file in sorted(os.listdir(pre)):
-        # In case features were generated but not labels, redo it
-        if file == "features.npy":
-            continue
         chain_id = file[-len(".npz") - 1 : -len(".npz")]
         sample = np.load(os.path.join(pre, file))
         sample = {
@@ -266,32 +263,51 @@ for pdb_id_struct in sorted(os.listdir(preprocessed_dir)):
         sample["pssm"] = get_pssm(pdb_id_struct, chain_id, sample["length"])
         if flg:
             X = generate_input(sample)
-            y = sample["labels"]
             flg = False
         else:
             # Using concatenation strategy
             tmp = generate_input(sample)
             X = np.concatenate((X, tmp), 1)
-            y = np.concatenate((y, sample["labels"]), 0)
 
     np.save(features_file, X)
-    np.save(labels_file, y)
+
+# For creating labels
+# for pdb_id_struct in sorted(os.listdir(preprocessed_dir)):
+#     flg = True
+#     pre = os.path.join(preprocessed_dir, pdb_id_struct)
+#     labels_file = os.path.join(pre, "labels.npy")
+
+#     if os.path.exists(labels_file):
+#         continue
+#     print(pdb_id_struct)
+
+#     for file in sorted(os.listdir(pre)):
+#         chain_id = file[-len(".npz") - 1 : -len(".npz")]
+#         sample = np.load(os.path.join(pre, file))
+#         sample = {
+#             key: sample[key].item() if sample[key].shape == () else sample[key]
+#             for key in sample
+#         }
+#         if flg:
+#             y = sample["labels"]
+#             flg = False
+#         else:
+#             y = np.concatenate((y, sample["labels"]), 0)
+
+#     np.save(labels_file, y)
 
 
 # SAVING ALL CHAINS AS DIFFERENT PROTEINS
 # for pdb_id_struct in sorted(os.listdir(preprocessed_dir)):
 #     pre = os.path.join(preprocessed_dir, pdb_id_struct)
-#     print(pdb_id_struct)
-
 #     for file in sorted(os.listdir(pre)):
-#         # In case features were generated but not labels, redo it
 #         if not file.endswith(".npz"):
 #             continue
 #         chain_id = file[-len(".npz") - 1 : -len(".npz")]
-#         features_file = os.path.join(pre, "features" + chain_id + ".npy")
-#         labels_file = os.path.join(pre, "labels" + chain_id + ".npy")
-#         if os.path.exists(features_file) and os.path.exists(labels_file):
+#         features_file = os.path.join(pre, "features_" + chain_id + ".npy")
+#         if os.path.exists(features_file):
 #             continue
+#         print(pdb_id_struct, chain_id)
 #         sample = np.load(os.path.join(pre, file))
 #         sample = {
 #             key: sample[key].item() if sample[key].shape is () else sample[key]
@@ -299,9 +315,25 @@ for pdb_id_struct in sorted(os.listdir(preprocessed_dir)):
 #         }
 #         sample["pssm"] = get_pssm(pdb_id_struct, chain_id, sample["length"])
 #         X = generate_input(sample)
-#         y = sample["labels"]
-
 #         np.save(features_file, X)
+
+
+# for pdb_id_struct in sorted(os.listdir(preprocessed_dir)):
+#     pre = os.path.join(preprocessed_dir, pdb_id_struct)
+#     for file in sorted(os.listdir(pre)):
+#         if not file.endswith(".npz"):
+#             continue
+#         chain_id = file[-len(".npz") - 1 : -len(".npz")]
+#         labels_file = os.path.join(pre, "labels_" + chain_id + ".npy")
+#         if os.path.exists(labels_file):
+#             continue
+#         print(pdb_id_struct, chain_id)
+#         sample = np.load(os.path.join(pre, file))
+#         sample = {
+#             key: sample[key].item() if sample[key].shape is () else sample[key]
+#             for key in sample
+#         }
+#         y = sample["labels"]
 #         np.save(labels_file, y)
 
 
@@ -312,15 +344,10 @@ for pdb_id_struct in sorted(os.listdir(preprocessed_dir)):
 def archive_dir(folder, pattern, name):
     parent_dir = os.path.dirname(folder)
     folder = os.path.basename(folder)
-    #     print(parent_dir, folder)
     if os.path.exists(os.path.join(parent_dir, name)):
         print("Warning:", name, "already exists in", parent_dir)
-        inp = input("Do you want to overwrite existing file? (y/n): ")
-        if inp[0].lower() == "n":
-            return
     # Using only a single ! command since multiple ! spawn different bash shells
-    # For some reason, the below code is doubling the contents of the tar file
-    # !cd $parent_dir; find $folder -name "$pattern" | tar --sort=name -I zstd -cf $name -T -; rsync -avP $name crvineeth97@ada:/share2/crvineeth97/compressed/scPDB; cd -; # noqa: E501
+    # ! cd $parent_dir; find $folder -name "$pattern" | tar --sort=name -I zstd -cf $name -T -; rsync -avP $name crvineeth97@ada:/share2/crvineeth97/compressed/scPDB; cd -; # noqa: E501
     # To untar, use
     # !tar -I zstd -xvf $name
 

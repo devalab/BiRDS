@@ -10,7 +10,6 @@ from torch.utils.data import Dataset
 data_dir = os.path.abspath("./data/scPDB")
 splits_dir = os.path.join(data_dir, "splits")
 preprocessed_dir = os.path.join(data_dir, "preprocessed")
-device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
 
 # A collate function to merge samples into a minibatch, will be used by DataLoader
@@ -22,8 +21,8 @@ def collate_fn(samples):
     batch_size = len(samples)
     lengths = [0] * batch_size
     feat_vec_len, max_len = samples[0][0].shape
-    X = torch.zeros(batch_size, feat_vec_len, max_len, device=device)
-    y = torch.zeros(batch_size, max_len, device=device)
+    X = torch.zeros(batch_size, feat_vec_len, max_len)
+    y = torch.zeros(batch_size, max_len)
     for i, sample in enumerate(samples):
         lengths[i] = len(sample[1])
         X[i, :, : lengths[i]] = sample[0]

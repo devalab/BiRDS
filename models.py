@@ -1,4 +1,5 @@
 import math
+from argparse import ArgumentParser
 
 import torch
 import torch.nn.functional as F
@@ -16,7 +17,7 @@ class BasicBlock(torch.nn.Module):
     ):
         # Since we need same length output, we can't have
         # downsampling, dilations or strides
-        super(BasicBlock, self).__init__()
+        super().__init__()
         if norm_layer is None:
             norm_layer = torch.nn.BatchNorm1d
         if type(kernel_size) is not list or len(kernel_size) != 2:
@@ -63,7 +64,7 @@ class MakeResNet(torch.nn.Module):
     def __init__(
         self, layers, kernel_size, feat_vec_len, hidden_sizes, norm_layer=None,
     ):
-        super(MakeResNet, self).__init__()
+        super().__init__()
         if norm_layer is None:
             norm_layer = torch.nn.BatchNorm1d
         self._norm_layer = norm_layer
@@ -157,25 +158,20 @@ def resnet98(**kwargs):
 
 
 class ResNet(torch.nn.Module):
-    def __init__(
-        self,
-        feat_vec_len,
-        layers=[1, 1, 1, 1],
-        kernel_sizes=[3, 3],
-        hidden_sizes=[256, 128, 64, 32],
-        num_units=8,
-        dropout=0.0,
-    ):
-        super(ResNet, self).__init__()
-        assert len(layers) == len(hidden_sizes)
-        self.layers = layers
-        self.kernel_sizes = kernel_sizes
-        self.hidden_sizes = hidden_sizes
-        self.resnet_layer = MakeResNet(layers, kernel_sizes, feat_vec_len, hidden_sizes)
-        self.fc1 = torch.nn.Linear(hidden_sizes[-1], num_units)
+    def __init__(self, feat_vec_len, hparams):
+        super().__init__()
+        assert len(hparams.layers) == len(hparams.hidden_sizes)
+        self.hparams = hparams
+        self.layers = hparams.layers
+        self.kernel_sizes = hparams.kernel_sizes
+        self.hidden_sizes = hparams.hidden_sizes
+        self.resnet_layer = MakeResNet(
+            hparams.layers, hparams.kernel_sizes, feat_vec_len, hparams.hidden_sizes
+        )
+        self.fc1 = torch.nn.Linear(hparams.hidden_sizes[-1], hparams.num_units)
         self.act1 = torch.nn.ReLU()
-        self.dropout = torch.nn.Dropout(dropout)
-        self.fc2 = torch.nn.Linear(num_units, 1)
+        self.dropout = torch.nn.Dropout(hparams.dropout)
+        self.fc2 = torch.nn.Linear(hparams.num_units, 1)
         # self.act2 = torch.nn.Sigmoid()
 
     def forward(self, X, lengths, **kwargs):
@@ -198,12 +194,24 @@ class ResNet(torch.nn.Module):
 
         return X
 
+    @staticmethod
+    def add_model_specific_args(parent_parser):
+        parser = ArgumentParser(parents=[parent_parser], add_help=False)
+        parser.add_argument("--layers", nargs="+", type=int, default=[1, 1, 1, 1])
+        parser.add_argument(
+            "--hidden_sizes", nargs="+", type=int, default=[256, 128, 64, 32]
+        )
+        parser.add_argument("--kernel_sizes", nargs="+", type=int, default=[3, 3])
+        parser.add_argument("--num_units", type=int, default=8)
+        parser.add_argument("--dropout", type=float, default=0.0)
+        return parser
+
 
 class StackedConv(torch.nn.Module):
     def __init__(
         self, feat_vec_len, kernel_size=17, hidden_sizes=[32, 8, 1], dropout=0.0
     ):
-        super(StackedConv, self).__init__()
+        super().__init__()
         self.conv_layers = torch.nn.ModuleList([])
         self.depth = len(hidden_sizes)
         self.dropout = torch.nn.Dropout(dropout, True)
@@ -229,7 +237,7 @@ class StackedConv(torch.nn.Module):
 
 class BiLSTM(torch.nn.Module):
     def __init__(self, feat_vec_len, hidden_sizes=[32, 1], num_layers=2, dropout=0.0):
-        super(BiLSTM, self).__init__()
+        super().__init__()
         self.feat_vec_len = feat_vec_len
         self.hidden_sizes = hidden_sizes
         self.num_layers = num_layers
@@ -276,7 +284,7 @@ class BiLSTM(torch.nn.Module):
 
 class StackedNN(torch.nn.Module):
     def __init__(self, feat_vec_len, hidden_sizes=[128, 32, 1], dropout=0.0):
-        super(StackedNN, self).__init__()
+        super().__init__()
         self.feat_vec_len = feat_vec_len
         self.hidden_sizes = hidden_sizes
         self.depth = len(hidden_sizes)
@@ -302,7 +310,7 @@ class StackedNN(torch.nn.Module):
 
 class BiGRU(torch.nn.Module):
     def __init__(self, feat_vec_len, hidden_sizes=[32, 1], num_layers=2, dropout=0.0):
-        super(BiGRU, self).__init__()
+        super().__init__()
         self.feat_vec_len = feat_vec_len
         self.hidden_sizes = hidden_sizes
         self.num_layers = num_layers
@@ -349,7 +357,7 @@ class BiGRU(torch.nn.Module):
 
 class PositionalEncoding(torch.nn.Module):
     def __init__(self, d_model, dropout=0.1, max_len=5000):
-        super(PositionalEncoding, self).__init__()
+        super().__init__()
         self.dropout = torch.nn.Dropout(p=dropout)
 
         pe = torch.zeros(max_len, d_model)
@@ -378,7 +386,7 @@ class Transformer(torch.nn.Module):
         # nhead: the number of heads in the multiheadattention models
         # nhid: the dimension of the feedforward network model in torch.nn.TransformerEncoder
         # nlayers: the number of torch.nn.TransformerEncoderLayer in torch.nn.TransformerEncoder
-        super(Transformer, self).__init__()
+        super().__init__()
         self.src_mask = None
         self.pos_encoder = PositionalEncoding(feat_vec_len, dropout)
         encoder_layers = torch.nn.TransformerEncoderLayer(
@@ -406,7 +414,7 @@ class Transformer(torch.nn.Module):
 
     def forward(self, X, lengths, **kwargs):
         # if self.src_mask is None or self.src_mask.size(0) != len(X):
-        #     mask = self._generate_square_subsequent_mask(len(X)).to(DEVICE)
+        #     mask = self._generate_square_subsequent_mask(len(X))
         #     self.src_mask = mask
 
         # [Batch, 21, Max_length] -> [Batch, Max_length, 21]
@@ -423,7 +431,7 @@ class Transformer(torch.nn.Module):
 
 class UNetConvBlock(torch.nn.Module):
     def __init__(self, in_size, out_size, padding, batch_norm):
-        super(UNetConvBlock, self).__init__()
+        super().__init__()
         block = []
 
         block.append(
@@ -449,7 +457,7 @@ class UNetConvBlock(torch.nn.Module):
 
 class UNetUpBlock(torch.nn.Module):
     def __init__(self, in_size, out_size, up_mode, padding, batch_norm):
-        super(UNetUpBlock, self).__init__()
+        super().__init__()
         if up_mode == "upconv":
             self.up = torch.nn.ConvTranspose1d(
                 in_size, out_size, kernel_size=2, stride=2
@@ -516,7 +524,7 @@ class UNet(torch.nn.Module):
                            learned upsampling.
                            'upsample' will use bilinear upsampling.
         """
-        super(UNet, self).__init__()
+        super().__init__()
         assert up_mode in ("upconv", "upsample")
         self.padding = padding
         self.depth = depth

@@ -149,44 +149,48 @@ class Mol2:
         self.sequences = sequences
         return sequences
 
+    @staticmethod
+    def read_fasta(rcsb_fasta):
+        sequences = {}
+        with open(rcsb_fasta, "r") as f:
+            header = f.readline()
+            while 1:
+                chain_id = header[6:7]
+                sequence = ""
+                line = f.readline()
+                while line != "" and line is not None and line[0] != ">":
+                    sequence += line.strip()
+                    line = f.readline()
+                sequences[chain_id] = sequence.replace("U", "X").replace("O", "X")
+                if line == "" or line is None:
+                    break
+                header = line
+        return sequences
+
+    @staticmethod
+    def align_sequences(mol2_sequences, rcsb_sequences):
+        for chain in mol2_sequences:
+            # idir (DP path); jpV (Horizontal jump number); jpH (Vertical jump number)
+            idir, jpV, jpH = calcualte_score_gotoh(
+                rcsb_sequences[chain], mol2_sequences[chain]
+            )
+            # sequenceA (aligned f1); sequenceB (aligned f2)
+            rcsb_sequences[chain], mol2_sequences[chain] = trace_back_gotoh(
+                idir, jpV, jpH, rcsb_sequences[chain], mol2_sequences[chain]
+            )
+        return mol2_sequences, rcsb_sequences
+
     def reindex(self, rcsb_fasta):
         """
         rcsb_fasta: The actual fasta file containing the full sequence of amino acids
 
         Creates a new ["reindex_id"] column in the subst_df dataframe
         """
-
-        def read_fasta():
-            sequences = {}
-            with open(rcsb_fasta, "r") as f:
-                header = f.readline()
-                while 1:
-                    chain_id = header[6:7]
-                    sequence = ""
-                    line = f.readline()
-                    while line != "" and line is not None and line[0] != ">":
-                        sequence += line.strip()
-                        line = f.readline()
-                    sequences[chain_id] = sequence.replace("U", "X").replace("O", "X")
-                    if line == "" or line is None:
-                        break
-                    header = line
-            return sequences
-
-        def align_sequences():
-            for chain in mol2_sequences:
-                # idir (DP path); jpV (Horizontal jump number); jpH (Vertical jump number)
-                idir, jpV, jpH = calcualte_score_gotoh(
-                    rcsb_sequences[chain], mol2_sequences[chain]
-                )
-                # sequenceA (aligned f1); sequenceB (aligned f2)
-                rcsb_sequences[chain], mol2_sequences[chain] = trace_back_gotoh(
-                    idir, jpV, jpH, rcsb_sequences[chain], mol2_sequences[chain]
-                )
-
         mol2_sequences = self.to_fasta()
-        rcsb_sequences = read_fasta()
-        align_sequences()
+        rcsb_sequences = self.read_fasta(rcsb_fasta)
+        mol2_sequences, rcsb_sequences = self.align_sequences(
+            mol2_sequences, rcsb_sequences
+        )
         # Create a new column that contains the reindexed id
         self.subst_df["reindex_id"] = 0
         for chain in mol2_sequences:
@@ -218,55 +222,54 @@ class Mol2:
                 self.subst_df.at[df_idxs[jdx], "reindex_id"] = idx + 1
                 jdx += 1
 
-    def write_pdb(self, pdb_file, reindex_format=True):
-        def pdb_line(record):
-            if reindex_format and record[4] == 0:
-                ignored.add(record[2])
-                return ""
-            space = " "
-            serial = str(record[0]).rjust(5)
-            name = record[1][:4].center(4)
-            altLoc = space
-            resName = record[2][:3].rjust(3)
-            chainID = record[3]
-            resSeq = str(record[4]).rjust(4)
-            iCode = space
-            x = "%8.3f" % record[5]
-            y = "%8.3f" % record[6]
-            z = "%8.3f" % record[7]
-            occupancy = "%6.2f" % 1.0
-            tempFactor = "%6.2f" % 0.0
-            element = record[1][0].rjust(2)
-            charge = str(int(record[8]))[::-1].ljust(2)
-            return (
-                "ATOM  "
-                + serial
-                + space
-                + name
-                + altLoc
-                + resName
-                + space
-                + chainID
-                + resSeq
-                + iCode
-                + 3 * space
-                + x
-                + y
-                + z
-                + occupancy
-                + tempFactor
-                + 10 * space
-                + element
-                + charge
-                + "\n"
-            )
+    @staticmethod
+    def pdb_line(record, reindex_format):
+        if reindex_format and record[4] == 0:
+            return ""
+        space = " "
+        serial = str(record[0]).rjust(5)
+        name = record[1][:4].center(4)
+        altLoc = space
+        resName = record[2][:3].rjust(3)
+        chainID = record[3]
+        resSeq = str(record[4]).rjust(4)
+        iCode = space
+        x = "%8.3f" % record[5]
+        y = "%8.3f" % record[6]
+        z = "%8.3f" % record[7]
+        occupancy = "%6.2f" % 1.0
+        tempFactor = "%6.2f" % 0.0
+        element = record[1][0].rjust(2)
+        charge = str(int(record[8]))[::-1].ljust(2)
+        return (
+            "ATOM  "
+            + serial
+            + space
+            + name
+            + altLoc
+            + resName
+            + space
+            + chainID
+            + resSeq
+            + iCode
+            + 3 * space
+            + x
+            + y
+            + z
+            + occupancy
+            + tempFactor
+            + 10 * space
+            + element
+            + charge
+            + "\n"
+        )
 
-        ignored = set()
+    def write_pdb(self, pdb_file, reindex_format=True):
         df = self.atom_df.merge(self.subst_df, "left", ["subst_id", "subst_name"])
         if "reindex_id" not in df.columns:
             df["reindex_id"] = df["subst_id"]
         pdb_text = [
-            pdb_line(record)
+            self.pdb_line(record, reindex_format)
             for record in df[
                 [
                     "atom_id",
@@ -281,7 +284,6 @@ class Mol2:
                 ]
             ].values
         ]
-        print("Ignored", ignored)
         with open(pdb_file, "w") as f:
             f.writelines(pdb_text)
         return pdb_text
