@@ -236,7 +236,7 @@ def initialize_protein_info(pdb_id_struct, chain_id):
     pre = os.path.join(raw_dir, pdb_id_struct)
     protein = {}
     protein["structure"] = parser.get_structure(
-        pdb_id_struct, os.path.join(pre, "tmp.pdb")
+        pdb_id_struct, os.path.join(pre, "reindexed_" + chain_id + ".pdb")
     )
 
     protein["residues"] = []
@@ -372,9 +372,6 @@ process_time = 0
 write_time = 0
 for pdb_id_struct in sorted(os.listdir(raw_dir)):
     pre = os.path.join(raw_dir, pdb_id_struct)
-    if not os.path.exists(os.path.join(pre, "downloaded.pdb")):
-        print("Downloaded PDB does not exist for %s" % pdb_id_struct)
-        continue
     process_time_start = time()
     for file in sorted(os.listdir(pre)):
         # Get only the chain fasta sequences
@@ -389,8 +386,8 @@ for pdb_id_struct in sorted(os.listdir(raw_dir)):
             continue
 
         print(pdb_id_struct, chain_id)
-        # Reindex the chain and write to tmp.pdb
-        dest = os.path.join(pre, "tmp.pdb")
+        # Reindex the chain and write to file
+        dest = os.path.join(pre, "reindexed_" + chain_id + ".pdb")
         PDBtxt_reindex = reindex_pdb(
             os.path.join(pre, chain_id + ".fasta"),
             os.path.join(pre, "downloaded.pdb"),
@@ -425,8 +422,6 @@ for pdb_id_struct in sorted(os.listdir(raw_dir)):
             print(pdb_id_struct, chain_id, "dictionary fail")
             continue
 
-        # Remove the tmp.pdb file
-        os.remove(dest)
         process_time += time() - process_time_start
 
         # Write the data to a numpy .npz file

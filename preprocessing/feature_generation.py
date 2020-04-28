@@ -182,8 +182,8 @@ def generate_input(sample):
 # Using the distance map to pick the closest 20 residues and creating features for each amino acid
 # Amino acid no. + Distance from curr. aa + PSSM + AA Properties
 
-feat_vec_len = 21 + 1 + 21 + len(AA_sel_feats["X"])
-close_aa = 20
+# feat_vec_len = 21 + 1 + 21 + len(AA_sel_feats["X"])
+# close_aa = 20
 
 
 # def generate_input(sample):
@@ -320,12 +320,12 @@ def archive_dir(folder, pattern, name):
             return
     # Using only a single ! command since multiple ! spawn different bash shells
     # For some reason, the below code is doubling the contents of the tar file
-    # !cd $parent_dir; find $folder -name "$pattern" | tar --sort=name -I zstd -cf $name -T -;
-    # rsync -avP $name crvineeth97@ada:/share2/crvineeth97/compressed/scPDB; cd -
+    # !cd $parent_dir; find $folder -name "$pattern" | tar --sort=name -I zstd -cf $name -T -; rsync -avP $name crvineeth97@ada:/share2/crvineeth97/compressed/scPDB; cd -; # noqa: E501
     # To untar, use
-    # !tar -I zstd -xf $name
+    # !tar -I zstd -xvf $name
 
 
+# Examples:
 # archive_dir(raw_dir, "*", "raw.tar.zst")
 # archive_dir(preprocessed_dir, "*.npy", "features_labels.tar.zst")
 # archive_dir(preprocessed_dir, "*.npz", "preprocessed_chains.tar.zst")
