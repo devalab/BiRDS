@@ -341,8 +341,8 @@ def get_distance_map_true(protein):
     num_residues = len(protein["residues"])
     # Don't use np.inf, use an impossibly large number
     distance_map = np.full((seq_len, seq_len), 1e6)  # Initialize to infinite distance
-    at1 = at2 = "CB"
     for ind1 in range(num_residues):
+        at1 = "CB"
         res1 = protein["residues"][ind1]
         if not res1.has_id("CB"):
             at1 = "CA"
@@ -350,6 +350,7 @@ def get_distance_map_true(protein):
                 continue
         res1_ind = res1.get_id()[1] - 1
         for ind2 in range(ind1 + 1, num_residues):
+            at2 = "CB"
             res2 = protein["residues"][ind2]
             if not res2.has_id("CB"):
                 at2 = "CA"
@@ -549,10 +550,6 @@ AA_ID_DICT = {
 }
 AA_ID_DICT = defaultdict(lambda: 0, AA_ID_DICT)
 
-# One-hot encoding and positional encoding
-feat_vec_len = 21
-feat_vec_len += 1
-
 # We generated PSSMs for select sequences
 # Mapping different sequences to the one for which we generated
 common_pssms = defaultdict(str)
@@ -580,14 +577,10 @@ def get_pssm(pdb_id_struct, chain_id, length):
     return feature
 
 
-# PSSM length
-feat_vec_len += 21
-
 # Amino acid physico-chemical features selected by removing highly correlated features
 AA_sel_feats = get_amino_acid_properties(
     os.path.join(os.path.dirname(data_dir), "selected_features.csv")
 )
-feat_vec_len += len(AA_sel_feats["X"])
 
 
 # %%
@@ -597,6 +590,9 @@ import numpy as np
 
 
 # Without using distance map
+feat_vec_len = 21 + 1 + 21 + len(AA_sel_feats["X"])
+
+
 def generate_input(sample):
     X = np.zeros((feat_vec_len, sample["length"]))
 

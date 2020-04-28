@@ -263,9 +263,12 @@ def get_protein_ligand_dist(protein, ligand):
     """
     centroid = ComputeCentroid(ligand["supplier"].GetConformer())
     centroid = np.array([centroid.x, centroid.y, centroid.z])
-    dist = np.full(len(protein["sequence"]), 1e6)
+    seq_len = len(protein["sequence"])
+    dist = np.full(seq_len, 1e6)
     for residue in protein["residues"]:
         res_ind = residue.get_id()[1] - 1
+        if res_ind >= seq_len:
+            continue
         if residue.has_id("CB"):
             atom_type = "CB"
         elif residue.has_id("CA"):
@@ -289,21 +292,28 @@ def get_distance_map_true(protein):
     num_residues = len(protein["residues"])
     # Don't use np.inf, use an impossibly large number
     distance_map = np.full((seq_len, seq_len), 1e6)  # Initialize to infinite distance
-    at1 = at2 = "CB"
     for ind1 in range(num_residues):
+        at1 = "CB"
         res1 = protein["residues"][ind1]
         if not res1.has_id("CB"):
             at1 = "CA"
             if not res1.has_id("CA"):
                 continue
         res1_ind = res1.get_id()[1] - 1
+        # There might be some X at the end of the fasta and might have been written to reindexed pdb
+        if res1_ind >= seq_len:
+            print("Ignored residue", res1.get_resname())
+            continue
         for ind2 in range(ind1 + 1, num_residues):
+            at2 = "CB"
             res2 = protein["residues"][ind2]
             if not res2.has_id("CB"):
                 at2 = "CA"
                 if not res2.has_id("CA"):
                     continue
             res2_ind = res2.get_id()[1] - 1
+            if res2_ind >= seq_len:
+                continue
             dist = np.linalg.norm(res1[at1].get_coord() - res2[at2].get_coord())
             distance_map[res1_ind][res2_ind] = dist
             distance_map[res2_ind][res1_ind] = dist
@@ -478,10 +488,6 @@ AA_ID_DICT = {
 }
 AA_ID_DICT = defaultdict(lambda: 0, AA_ID_DICT)
 
-# One-hot encoding and positional encoding
-feat_vec_len = 21
-feat_vec_len += 1
-
 # We generated PSSMs for select sequences
 # Mapping different sequences to the one for which we generated
 common_pssms = defaultdict(str)
@@ -509,14 +515,10 @@ def get_pssm(pdb_id_struct, chain_id, length):
     return feature
 
 
-# PSSM length
-feat_vec_len += 21
-
 # Amino acid physico-chemical features selected by removing highly correlated features
 AA_sel_feats = get_amino_acid_properties(
     os.path.join(os.path.dirname(data_dir), "selected_features.csv")
 )
-feat_vec_len += len(AA_sel_feats["X"])
 
 
 # %%
@@ -526,6 +528,9 @@ import numpy as np
 
 
 # Without using distance map
+feat_vec_len = 21 + 1 + 21 + len(AA_sel_feats["X"])
+
+
 def generate_input(sample):
     X = np.zeros((feat_vec_len, sample["length"]))
 
