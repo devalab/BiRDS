@@ -175,13 +175,14 @@ class ResNet(torch.nn.Module):
         # self.act2 = torch.nn.Sigmoid()
 
     def forward(self, X, lengths, **kwargs):
-        # [Batch, feat_vec_len, Max_length] -> [Batch, 512, Max_length]
+        # [Batch, feat_vec_len, Max_length] -> [Batch, hidden_sizes[-1], Max_length]
         X = self.resnet_layer(X)
 
-        # [Batch, 512, Max_length] -> [Batch * Max_length, 512]
+        # [Batch, hidden_sizes[-1], Max_length] -> [Batch * Max_length, hidden_sizes[-1]]
         X = X.transpose(1, 2)
         X = X.contiguous().view(-1, X.shape[2])
 
+        # [Batch * Max_length, hidden_sizes[-1]] -> [Batch, Max_length, 1]
         # Run through linear and activation layers
         X = self.fc1(X)
         X = self.act1(X)
@@ -197,13 +198,124 @@ class ResNet(torch.nn.Module):
     @staticmethod
     def add_model_specific_args(parent_parser):
         parser = ArgumentParser(parents=[parent_parser], add_help=False)
-        parser.add_argument("--layers", nargs="+", type=int, default=[1, 1, 1, 1])
         parser.add_argument(
-            "--hidden_sizes", nargs="+", type=int, default=[256, 128, 64, 32]
+            "--layers",
+            nargs="+",
+            type=int,
+            default=[2, 2, 2, 2],
+            help="The number of basic blocks to be used in each layer. Default: 2 2 2 2 forms Resnet-18",
         )
-        parser.add_argument("--kernel_sizes", nargs="+", type=int, default=[3, 3])
-        parser.add_argument("--num_units", type=int, default=8)
-        parser.add_argument("--dropout", type=float, default=0.0)
+        parser.add_argument(
+            "--hidden_sizes",
+            nargs="+",
+            type=int,
+            default=[256, 128, 64, 32],
+            help="The size of the 1-D convolutional layers. Eg: 256 128 64 32",
+        )
+        parser.add_argument(
+            "--kernel_sizes",
+            nargs="+",
+            type=int,
+            default=[7, 7],
+            help="Kernel sizes of the 2 convolutional layers that form the basic block of the Resnet. Default: 7 7",
+        )
+        parser.add_argument(
+            "--num_units",
+            type=int,
+            default=8,
+            help="Number of units that the fully connected layer has. Default: 8",
+        )
+        parser.add_argument(
+            "--dropout",
+            type=float,
+            default=0.2,
+            help="Dropout between the fully connected layers. Default 0.2",
+        )
+        return parser
+
+
+class BiLSTM(torch.nn.Module):
+    def __init__(self, feat_vec_len, hparams):
+        super().__init__()
+        self.feat_vec_len = feat_vec_len
+        self.hidden_sizes = hparams.hidden_sizes
+        self.num_layers = hparams.num_layers
+        self.depth = len(hparams.hidden_sizes)
+        self.brnn = torch.nn.ModuleList([])
+        self.dropout = torch.nn.Dropout(hparams.dropout, True)
+        for i in range(self.depth):
+            self.brnn.append(
+                torch.nn.LSTM(
+                    input_size=feat_vec_len,
+                    hidden_size=hparams.hidden_sizes[i],
+                    num_layers=hparams.num_layers,
+                    bias=True,
+                    dropout=hparams.dropout,
+                    bidirectional=True,
+                )
+            )
+            feat_vec_len = hparams.hidden_sizes[i]
+        self.fc1 = torch.nn.Linear(hparams.hidden_sizes[-1], hparams.num_units)
+        self.act1 = torch.nn.ReLU()
+        self.fc2 = torch.nn.Linear(hparams.num_units, 1)
+
+    def forward(self, X, lengths, **kwargs):
+        # [Batch, feat_vec_len, Max_length] -> [Max_length, Batch, feat_vec_len]
+        output = X.transpose(1, 2).transpose(0, 1)
+        batch_size = len(lengths)
+        for i in range(self.depth):
+            # pack_padded_sequence so that padded items in the sequence won't be shown to the LSTM
+            output = pack_padded_sequence(output, lengths)
+            # If we don't send hidden and cell state to LSTM, they default to zero
+            # [Max_length, Batch, hidden_sizes[i-1]] -> [Max_length, Batch, 2 * hidden_sizes[i]]
+            # If i is 0 then hidden_sizes[i-1] is self.feat_vec_len
+            output, _ = self.brnn[i](output)
+            # undo the packing operation
+            output, _ = pad_packed_sequence(output)
+            # We need to change our last output dimension. We'll use averaging
+            # [Max_length, Batch, 2 * hidden_sizes[i]] -> [Max_length, Batch, hidden_sizes[i]]
+            output = output.view(lengths[0], batch_size, 2, self.hidden_sizes[i])
+            output = output.mean(dim=2)
+            self.dropout(output)
+
+        # [Max_length, Batch, hidden_sizes[-1]] -> [Batch, Max_length, 1]
+        output = output.transpose(0, 1)
+        # Run through linear and activation layers
+        output = self.fc1(output)
+        output = self.act1(output)
+        output = self.dropout(output)
+        output = self.fc2(output)
+
+        return output.squeeze(dim=2)
+
+    @staticmethod
+    def add_model_specific_args(parent_parser):
+        parser = ArgumentParser(parents=[parent_parser], add_help=False)
+        parser.add_argument(
+            "--hidden_sizes",
+            nargs="+",
+            type=int,
+            default=[256, 128, 64, 32],
+            help="The size of each stacked LSTM layers. Eg: 256 128 64 32",
+        )
+        parser.add_argument(
+            "--num_layers",
+            type=int,
+            default=1,
+            help="Number of LSTM units in each layer. Default: 1",
+        )
+        parser.add_argument(
+            "--num_units",
+            type=int,
+            default=8,
+            help="Number of units that the fully connected layer has. Default: 8",
+        )
+        parser.add_argument(
+            "--dropout",
+            type=float,
+            default=0.2,
+            help="Dropout applied after each layer. Default 0.2",
+        )
         return parser
 
 
@@ -235,66 +347,22 @@ class StackedConv(torch.nn.Module):
         return output.squeeze(dim=1)
 
 
-class BiLSTM(torch.nn.Module):
-    def __init__(self, feat_vec_len, hidden_sizes=[32, 1], num_layers=2, dropout=0.0):
-        super().__init__()
-        self.feat_vec_len = feat_vec_len
-        self.hidden_sizes = hidden_sizes
-        self.num_layers = num_layers
-        self.depth = len(hidden_sizes)
-        self.brnn = torch.nn.ModuleList([])
-        self.dropout = torch.nn.Dropout(dropout, True)
-        for i in range(self.depth):
-            self.brnn.append(
-                torch.nn.LSTM(
-                    input_size=feat_vec_len,
-                    hidden_size=hidden_sizes[i],
-                    num_layers=num_layers,
-                    bias=True,
-                    dropout=dropout,
-                    bidirectional=True,
-                )
-            )
-            feat_vec_len = hidden_sizes[i]
-
-    def forward(self, X, lengths, **kwargs):
-        # [Batch, feat_vec_len, Max_length] -> [Max_length, Batch, feat_vec_len]
-        output = X.transpose(1, 2).transpose(0, 1)
-        batch_size = len(lengths)
-        for i in range(self.depth):
-            # pack_padded_sequence so that padded items in the sequence won't be shown to the LSTM
-            output = pack_padded_sequence(output, lengths)
-            # If we don't send hidden and cell state to LSTM, they default to zero
-            # [Max_length, Batch, hidden_sizes[i-1]] -> [Max_length, Batch, 2 * hidden_sizes[i]]
-            # If i is 0 then hidden_sizes[i-1] is self.feat_vec_len
-            output, _ = self.brnn[i](output)
-            # undo the packing operation
-            output, _ = pad_packed_sequence(output)
-            # We need to change our last output dimension. We'll use averaging
-            # [Max_length, Batch, 2 * hidden_sizes[i]] -> [Max_length, Batch, hidden_sizes[i]]
-            output = output.view(lengths[0], batch_size, 2, self.hidden_sizes[i])
-            output = output.mean(dim=2)
-            self.dropout(output)
-
-        # [Max_length, Batch, 1] -> [Batch, Max_length]
-        output = output.transpose(0, 1).squeeze(dim=2)
-
-        return output
-
-
 class StackedNN(torch.nn.Module):
-    def __init__(self, feat_vec_len, hidden_sizes=[128, 32, 1], dropout=0.0):
+    def __init__(self, feat_vec_len, hparams):
         super().__init__()
         self.feat_vec_len = feat_vec_len
-        self.hidden_sizes = hidden_sizes
-        self.depth = len(hidden_sizes)
+        self.hidden_sizes = hparams.hidden_sizes
+        self.depth = len(hparams.hidden_sizes)
         self.nn = torch.nn.ModuleList([])
-        self.dropout = torch.nn.Dropout(dropout, True)
+        self.activation = torch.nn.ReLU()
+        self.dropout = torch.nn.Dropout(hparams.dropout, True)
         for i in range(self.depth):
             self.nn.append(
-                torch.nn.Linear(in_features=feat_vec_len, out_features=hidden_sizes[i],)
+                torch.nn.Linear(
+                    in_features=feat_vec_len, out_features=hparams.hidden_sizes[i],
+                )
             )
-            feat_vec_len = hidden_sizes[i]
+            feat_vec_len = hparams.hidden_sizes[i]
 
     def forward(self, X, lengths, **kwargs):
         # [Batch, feat_vec_len, Max_length] -> [Batch, Max_length, feat_vec_len]
@@ -303,9 +371,29 @@ class StackedNN(torch.nn.Module):
         # [Batch, Max_length, feat_vec_len] -> [Batch, Max_length, 1]
         for i in range(self.depth):
             output = self.nn[i](output)
-            self.dropout(output)
+            if i != self.depth:
+                self.dropout(output)
+                output = self.activation(output)
 
         return output.squeeze(dim=2)
+
+    @staticmethod
+    def add_model_specific_args(parent_parser):
+        parser = ArgumentParser(parents=[parent_parser], add_help=False)
+        parser.add_argument(
+            "--hidden_sizes",
+            nargs="+",
+            type=int,
+            default=[256, 128, 64, 32, 8, 1],
+            help="The size of each stacked Linear layers. Eg: 256 128 64 32 8 1",
+        )
+        parser.add_argument(
+            "--dropout",
+            type=float,
+            default=0.2,
+            help="Dropout applied after each layer. Default 0.2",
+        )
+        return parser
 
 
 class BiGRU(torch.nn.Module):

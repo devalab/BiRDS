@@ -6,6 +6,7 @@ from collections import defaultdict
 import numpy as np
 import torch
 from torch.utils.data import Dataset
+from tqdm import tqdm
 
 data_dir = os.path.abspath("./data/scPDB")
 splits_dir = os.path.join(data_dir, "splits")
@@ -49,7 +50,7 @@ class Kalasanty(Dataset):
         if precompute_class_weights:
             # self.pos_weight = self.compute_class_weights()
             # Already computed the weight from above
-            self.pos_weight = [11238357 / 356850]
+            self.pos_weight = [6505272 / 475452]
 
     def get_dataset(self):
         available = defaultdict(list)
@@ -75,7 +76,8 @@ class Kalasanty(Dataset):
         print("Precomputing class weights...")
         zeros = 0
         ones = 0
-        for i, pdb_id in enumerate(self.dataset_list):
+        # NOTE: Using just the first fold for now
+        for i, pdb_id in tqdm(enumerate(self.train_folds[0]), leave=False):
             pdb_id_struct = self.dataset[pdb_id][0]
             y = np.load(os.path.join(preprocessed_dir, pdb_id_struct, "labels.npy"))
             one = np.count_nonzero(y)
@@ -85,7 +87,7 @@ class Kalasanty(Dataset):
         pos_weight = [zeros / ones]
         print(pos_weight)
         print("Done")
-        return pos_weight
+        return torch.Tensor(pos_weight)
 
     def custom_cv(self):
         for i in range(10):

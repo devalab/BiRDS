@@ -1,3 +1,5 @@
+from collections import OrderedDict
+
 import torch
 from torch.nn.functional import binary_cross_entropy_with_logits
 
@@ -78,14 +80,16 @@ def batch_metrics(outputs, targets, lengths, reduction="mean"):
         output = (torch.sigmoid(outputs[i, : lengths[i]]) > 0.5).bool()
         target = targets[i, : lengths[i]].bool()
         cm = CM(output, target)
-        metrics = {
-            "iou": IOU(output, target),
-            "mcc": MCC(cm),
-            "precision": PRECISION(cm),
-            "recall": RECALL(cm),
-            "f1": F1(cm),
-            "acc": ACCURACY(cm),
-        }
+        metrics = OrderedDict(
+            {
+                "mcc": MCC(cm),
+                "acc": ACCURACY(cm),
+                "iou": IOU(output, target),
+                "precision": PRECISION(cm),
+                "recall": RECALL(cm),
+                "f1": F1(cm),
+            }
+        )
         if i == 0:
             running_metrics = metrics
             continue
