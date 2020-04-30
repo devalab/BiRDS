@@ -50,25 +50,20 @@ def F1(cm):
     return f1
 
 
-def LOSS(output, target, pos_weight=None, criterion=None):
-    if criterion is not None:
-        return criterion(output, target)
-    if pos_weight is None:
+def LOSS(output, target, pos_weight):
+    if pos_weight == "calc":
         ones = (target == 1).float().sum()
         zeros = len(target) - ones
-        pos_weight = torch.Tensor([(zeros + SMOOTH) / (ones + SMOOTH)])
+        pos_weight = [(zeros + SMOOTH) / (ones + SMOOTH)]
+    pos_weight = torch.Tensor(pos_weight).type(target[0].type())
     return binary_cross_entropy_with_logits(output, target, pos_weight=pos_weight)
 
 
-def batch_loss(
-    outputs, targets, lengths, pos_weight=None, criterion=None, reduction="mean"
-):
+def batch_loss(outputs, targets, lengths, pos_weight=[1], reduction="mean"):
     batch_size = len(lengths)
     loss = 0.0
     for i in range(batch_size):
-        loss += LOSS(
-            outputs[i, : lengths[i]], targets[i, : lengths[i]], pos_weight, criterion
-        )
+        loss += LOSS(outputs[i, : lengths[i]], targets[i, : lengths[i]], pos_weight)
     if reduction == "mean":
         loss /= batch_size
     return loss

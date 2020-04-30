@@ -157,6 +157,102 @@ def resnet98(**kwargs):
     return MakeResNet([3, 12, 30, 3], [11, 11], **kwargs)
 
 
+class Generator(torch.nn.Module):
+    def __init__(self, feat_vec_len, hparams):
+        super().__init__()
+        assert len(hparams.layers) == len(hparams.hidden_sizes)
+        self.hparams = hparams
+        self.layers = hparams.layers
+        self.kernel_sizes = hparams.kernel_sizes
+        self.hidden_sizes = hparams.hidden_sizes
+        self.resnet_layer = MakeResNet(
+            hparams.layers, hparams.kernel_sizes, feat_vec_len, hparams.hidden_sizes
+        )
+
+        def block(in_feat, out_feat, normalize=True):
+            layers = [torch.nn.Linear(in_feat, out_feat)]
+            if normalize:
+                layers.append(torch.nn.BatchNorm1d(out_feat, 0.8))
+            layers.append(torch.nn.LeakyReLU(0.2, inplace=True))
+            return layers
+
+        self.fc_layers = torch.nn.Sequential(
+            *block(hparams.hidden_sizes[-1], 256, normalize=False),
+            *block(256, 128),
+            *block(128, 64),
+            *block(64, 32),
+            torch.nn.Linear(32, 1),
+            torch.nn.Tanh()
+        )
+
+    def forward(self, X, **kwargs):
+        # [Batch, feat_vec_len, Max_length] -> [Batch, hidden_sizes[-1], Max_length]
+        max_len = X.shape[2]
+        X = self.resnet_layer(X)
+
+        # [Batch, hidden_sizes[-1], Max_length] -> [Batch * Max_length, hidden_sizes[-1]]
+        X = X.transpose(1, 2)
+        X = X.contiguous().view(-1, X.shape[2])
+
+        # [Batch * Max_length, hidden_sizes[-1]] -> [Batch * Max_length, 1]
+        X = self.fc_layers(X)
+
+        # [Batch * Max_length, 1] -> [Batch, Max_length]
+        X = X.view(-1, max_len)
+
+        return X
+
+    @staticmethod
+    def add_model_specific_args(parent_parser):
+        parser = ArgumentParser(parents=[parent_parser], add_help=False)
+        parser.add_argument(
+            "--layers",
+            nargs="+",
+            type=int,
+            default=[2, 2, 2, 2],
+            help="The number of basic blocks to be used in each layer. Default: 2 2 2 2 forms Resnet-18",
+        )
+        parser.add_argument(
+            "--hidden_sizes",
+            nargs="+",
+            type=int,
+            default=[64, 128, 256, 512],
+            help="The size of the 1-D convolutional layers. Eg: 64 128 256 512",
+        )
+        parser.add_argument(
+            "--kernel_sizes",
+            nargs="+",
+            type=int,
+            default=[7, 7],
+            help="Kernel sizes of the 2 convolutional layers that form the basic block of the Resnet. Default: 7 7",
+        )
+        parser.add_argument(
+            "--dropout",
+            type=float,
+            default=0.2,
+            help="Dropout between the fully connected layers. Default 0.2",
+        )
+        return parser
+
+
+class Discriminator(torch.nn.Module):
+    def __init__(self):
+        super().__init__()
+
+        self.model = torch.nn.Sequential(
+            torch.nn.Linear(1536, 512),
+            torch.nn.LeakyReLU(0.2, inplace=True),
+            torch.nn.Linear(512, 256),
+            torch.nn.LeakyReLU(0.2, inplace=True),
+            torch.nn.Linear(256, 1),
+            torch.nn.Sigmoid(),
+        )
+
+    def forward(self, X):
+        validity = self.model(X)
+        return validity
+
+
 class ResNet(torch.nn.Module):
     def __init__(self, feat_vec_len, hparams):
         super().__init__()
