@@ -31,8 +31,8 @@ def collate_fn(samples):
     return X, y, lengths
 
 
-class Kalasanty(Dataset):
-    def __init__(self, precompute_class_weights=False, **kwargs):
+class KalasantyBase(Dataset):
+    def __init__(self):
         super().__init__()
         self.train_folds = []
         self.valid_folds = []
@@ -47,10 +47,8 @@ class Kalasanty(Dataset):
         self.dataset_id_to_index = defaultdict(int)
         for i, val in enumerate(self.dataset_list):
             self.dataset_id_to_index[val] = i
-        if precompute_class_weights:
-            # self.pos_weight = self.compute_class_weights()
-            # Already computed the weight from above
-            self.pos_weight = [6505272 / 475452]
+        self.class_counts = self.get_class_counts()
+        self.pos_weight = self.class_counts[0] / self.class_counts[1]
 
     def get_dataset(self):
         available = defaultdict(list)
@@ -72,8 +70,8 @@ class Kalasanty(Dataset):
 
         return available
 
-    def compute_class_weights(self):
-        print("Precomputing class weights...")
+    def get_class_counts(self):
+        print("Computing class sample counts...")
         zeros = 0
         ones = 0
         # NOTE: Using just the first fold for now
@@ -84,10 +82,8 @@ class Kalasanty(Dataset):
             ones += one
             zeros += len(y) - one
         print(zeros, ones)
-        pos_weight = [zeros / ones]
-        print(pos_weight)
         print("Done")
-        return torch.Tensor(pos_weight)
+        return [zeros, ones]
 
     def custom_cv(self):
         for i in range(10):
@@ -96,84 +92,42 @@ class Kalasanty(Dataset):
             #             yield train_indices[:24], valid_indices[:24]
             yield train_indices, valid_indices
 
+
+class Kalasanty(KalasantyBase):
+    def __init__(self):
+        super().__init__()
+
     def __getitem__(self, index):
         pdb_id = self.dataset_list[index]
         # Just taking the first available structure for a pdb #TODO
         pdb_id_struct = self.dataset[pdb_id][0]
-        # print(pdb_id_struct)
         X = torch.from_numpy(
             np.load(os.path.join(preprocessed_dir, pdb_id_struct, "features.npy"))
         )
         y = torch.from_numpy(
             np.load(os.path.join(preprocessed_dir, pdb_id_struct, "labels.npy"))
         )
-        # print(X.shape, y.shape)
         return X, y
 
 
-class KalasantyChains(Dataset):
-    def __init__(self, precompute_class_weights=False, **kwargs):
+class KalasantyChains(KalasantyBase):
+    def __init__(self):
         super().__init__()
-        self.train_folds = []
-        self.valid_folds = []
-        self.dataset = self.get_dataset()
-        for i in range(10):
-            with open(os.path.join(splits_dir, "train_ids_fold" + str(i))) as f:
-                tmp = []
-                for line in f.readlines():
-                    tmp += self.dataset[line.strip()]
-                self.train_folds.append(tmp)
-        self.dataset_list = set(self.train_folds[0]).union(set(self.train_folds[1]))
-        for i in range(10):
-            self.valid_folds.append(list(self.dataset_list - set(self.train_folds[i])))
-        self.dataset_list = sorted(list(self.dataset_list))
-        self.dataset_id_to_index = defaultdict(int)
-        for i, val in enumerate(self.dataset_list):
-            self.dataset_id_to_index[val] = i
-        if precompute_class_weights:
-            # Already computed the weight from above
-            self.pos_weight = [11238357 / 356850]
-
-    def get_dataset(self):
-        chains = defaultdict(list)
-        for folder in sorted(os.listdir(preprocessed_dir)):
-            if folder[:4] in chains:
-                continue
-            for file in sorted(os.listdir(os.path.join(preprocessed_dir, folder))):
-                if file.startswith("feat"):
-                    chains[folder[:4]].append(folder + "/" + file[8:9])
-        extras = ["scPDB_blacklist.txt", "scPDB_leakage.txt"]
-        for file in extras:
-            with open(os.path.join(splits_dir, file)) as f:
-                for line in f.readlines():
-                    line = line.strip()
-                    if line[:4] in chains and chains[line[:4]][0][:-2] == line:
-                        del chains[line[:4]]
-        return chains
-
-    def custom_cv(self):
-        for i in range(10):
-            train_indices = [self.dataset_id_to_index[el] for el in self.train_folds[i]]
-            valid_indices = [self.dataset_id_to_index[el] for el in self.valid_folds[i]]
-            #             yield train_indices[:24], valid_indices[:24]
-            yield train_indices, valid_indices
 
     def __getitem__(self, index):
         pdb_id_struct, chain_id = self.dataset_list[index].split("/")
-        #         print(pdb_id_struct, chain_id)
         X = torch.from_numpy(
             np.load(
                 os.path.join(
-                    preprocessed_dir, pdb_id_struct, "features" + chain_id + ".npy"
+                    preprocessed_dir, pdb_id_struct, "features_" + chain_id + ".npy"
                 )
             )
         )
         y = torch.from_numpy(
             np.load(
                 os.path.join(
-                    preprocessed_dir, pdb_id_struct, "labels" + chain_id + ".npy"
+                    preprocessed_dir, pdb_id_struct, "labels_" + chain_id + ".npy"
                 )
             )
         )
-        # print(X.shape, y.shape)
         return X, y

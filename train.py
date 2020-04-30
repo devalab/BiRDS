@@ -5,6 +5,7 @@ from collections import OrderedDict
 import pytorch_lightning as pl
 import torch
 from pytorch_lightning import Trainer
+from pytorch_lightning.loggers import TensorBoardLogger
 from torch.nn import BCEWithLogitsLoss
 from torch.utils.data import DataLoader, SubsetRandomSampler
 
@@ -82,22 +83,22 @@ class Net(pl.LightningModule):
 def main(hparams, model_name):
     torch.manual_seed(hparams.seed)
     dataset = Kalasanty(precompute_class_weights=True)
-
+    logger = TensorBoardLogger(save_dir=os.getenv("HOME"), name="logs")
     net = Net(hparams, model_name, dataset)
     trainer = Trainer.from_argparse_args(
         hparams,
-        logger=True,
-        checkpoint_callback=True,
+        logger=logger,
+        checkpoint_callback=False,
         row_log_interval=100,
         log_save_interval=100,
         val_check_interval=0.5,
         progress_bar_refresh_rate=25,
         gpus=1,
         profiler=True,
-        default_root_dir=os.getenv("HOME"),
+        # default_root_dir=os.getenv("HOME"),
         max_epochs=50,
         # fast_dev_run=True,
-        overfit_pct=0.02,
+        # overfit_pct=0.02,
     )
     trainer.fit(net)
 

@@ -371,7 +371,7 @@ class StackedNN(torch.nn.Module):
         # [Batch, Max_length, feat_vec_len] -> [Batch, Max_length, 1]
         for i in range(self.depth):
             output = self.nn[i](output)
-            if i != self.depth:
+            if i != self.depth - 1:
                 self.dropout(output)
                 output = self.activation(output)
 
