@@ -24,68 +24,64 @@ def collate_fn(samples):
     feat_vec_len, max_len = samples[0][0].shape
     X = torch.zeros(batch_size, feat_vec_len, max_len)
     y = torch.zeros(batch_size, max_len)
-    for i, sample in enumerate(samples):
-        lengths[i] = len(sample[1])
-        X[i, :, : lengths[i]] = sample[0]
-        y[i, : lengths[i]] = sample[1]
-    return X, y, lengths
-
-
-def fl_collate_fn(samples):
-    samples.sort(key=lambda x: len(x[1]), reverse=True)
-    batch_size = len(samples)
-    lengths = [0] * batch_size
-    feat_vec_len, fixed_len = samples[0][0].shape
-    X = torch.zeros(batch_size, feat_vec_len, fixed_len)
-    y = torch.zeros(batch_size, fixed_len)
-    for i, sample in enumerate(samples):
-        lengths[i] = len(sample[1])
-        X[i] = sample[0]
-        y[i, : lengths[i]] = sample[1]
+    if max_len == len(samples[0][1]):
+        for i, sample in enumerate(samples):
+            lengths[i] = len(sample[1])
+            X[i, :, : lengths[i]] = sample[0]
+            y[i, : lengths[i]] = sample[1]
+    else:
+        for i, sample in enumerate(samples):
+            lengths[i] = len(sample[1])
+            X[i] = sample[0]
+            y[i, : lengths[i]] = sample[1]
     return X, y, lengths
 
 
 class Kalasanty(Dataset):
     def __init__(self, precompute_class_weights=False, fixed_length=False):
         super().__init__()
-        self.id_to_id_struct = self.get_mapping()
+        self.pdb_id_to_pdb_id_struct = self.get_mapping()
         self.train_folds = self.get_train_folds()
         self.dataset_list = self.train_folds[0].union(self.train_folds[1])
-        self.fixed_length = fixed_length
         if fixed_length:
             self.remove_extras()
         self.valid_folds = self.make_valid_folds()
         self.dataset_list = sorted(list(self.dataset_list))
-        self.pdb_id_to_index = defaultdict(int)
+        self.pdb_id_struct_to_index = defaultdict(int)
         for i, val in enumerate(self.dataset_list):
-            self.pdb_id_to_index[val] = i
+            self.pdb_id_struct_to_index[val] = i
         if precompute_class_weights:
             # self.pos_weight = self.compute_class_weights()
             self.pos_weight = [6505272 / 475452]
+        self.train_indices, self.valid_indices = self.custom_cv()
+        self.feat_vec_len = self[0][0].shape[0]
 
     @staticmethod
     def get_mapping():
-        available = defaultdict(list)
+        # There are multiple structures for a particular pdb_id, taking the first one
+        available = defaultdict(str)
         for file in sorted(os.listdir(preprocessed_dir)):
-            available[file[:4]].append(file)
+            if file[:4] not in available:
+                available[file[:4]] = file
         return available
 
-    @staticmethod
-    def get_train_folds():
+    def get_train_folds(self):
         train_folds = []
         for i in range(10):
             with open(os.path.join(splits_dir, "train_ids_fold" + str(i))) as f:
-                train_folds.append(set([line.strip() for line in f.readlines()]))
+                tmp = set()
+                for line in f.readlines():
+                    tmp.add(self.pdb_id_to_pdb_id_struct[line.strip()])
+                train_folds.append(tmp)
         return train_folds
 
     def remove_extras(self):
         extras = set()
-        for i, pdb_id in tqdm(enumerate(self.dataset_list), leave=False):
-            pdb_id_struct = self.id_to_id_struct[pdb_id][0]
+        for pdb_id_struct in tqdm(self.dataset_list, leave=False):
             if not os.path.exists(
                 os.path.join(preprocessed_dir, pdb_id_struct, "features.npy")
             ):
-                extras.add(pdb_id)
+                extras.add(pdb_id_struct)
         for i in range(10):
             self.train_folds[i] -= extras
         self.dataset_list -= extras
@@ -100,30 +96,29 @@ class Kalasanty(Dataset):
         print("Precomputing class weights...")
         zeros = 0
         ones = 0
-        # NOTE: Using just the first fold for now
-        for i, pdb_id in tqdm(enumerate(self.train_folds[0]), leave=False):
-            pdb_id_struct = self.id_to_id_struct[pdb_id][0]
+        for pdb_id_struct in tqdm(self.dataset_list, leave=False):
             y = np.load(os.path.join(preprocessed_dir, pdb_id_struct, "labels.npy"))
             one = np.count_nonzero(y)
             ones += one
             zeros += len(y) - one
-        print(zeros, ones)
         pos_weight = [zeros / ones]
-        print(pos_weight)
         print("Done")
         return pos_weight
 
     def custom_cv(self):
+        train_indices = []
+        valid_indices = []
         for i in range(10):
-            train_indices = [self.pdb_id_to_index[el] for el in self.train_folds[i]]
-            valid_indices = [self.pdb_id_to_index[el] for el in self.valid_folds[i]]
-            # yield train_indices[:24], valid_indices[:24]
-            yield train_indices, valid_indices
+            train_indices.append(
+                [self.pdb_id_struct_to_index[el] for el in self.train_folds[i]]
+            )
+            valid_indices.append(
+                [self.pdb_id_struct_to_index[el] for el in self.valid_folds[i]]
+            )
+        return train_indices, valid_indices
 
     def __getitem__(self, index):
-        pdb_id = self.dataset_list[index]
-        # Just taking the first available structure for a pdb #TODO
-        pdb_id_struct = self.id_to_id_struct[pdb_id][0]
+        pdb_id_struct = self.dataset_list[index]
         X = torch.from_numpy(
             np.load(os.path.join(preprocessed_dir, pdb_id_struct, "features.npy"))
         )
@@ -133,45 +128,26 @@ class Kalasanty(Dataset):
         return X, y
 
 
-class KalasantyChains(Dataset):
+class KalasantyChains(Kalasanty):
     def __init__(self, precompute_class_weights=False, fixed_length=False):
-        super().__init__()
-        self.train_folds = []
-        self.valid_folds = []
-        self.id_to_id_struct = self.get_dataset()
+        super().__init__(
+            precompute_class_weights=precompute_class_weights, fixed_length=fixed_length
+        )
+
+    def get_train_folds(self):
+        train_folds = []
         for i in range(10):
             with open(os.path.join(splits_dir, "train_ids_fold" + str(i))) as f:
-                tmp = []
+                tmp = set()
                 for line in f.readlines():
-                    tmp += self.id_to_id_struct[line.strip()]
-                self.train_folds.append(tmp)
-        self.dataset_list = set(self.train_folds[0]).union(set(self.train_folds[1]))
-        for i in range(10):
-            self.valid_folds.append(list(self.dataset_list - set(self.train_folds[i])))
-        self.dataset_list = sorted(list(self.dataset_list))
-        self.pdb_to_index = defaultdict(int)
-        for i, val in enumerate(self.dataset_list):
-            self.pdb_to_index[val] = i
-        if precompute_class_weights:
-            # Already computed the weight from above
-            self.pos_weight = [11238357 / 356850]
-
-    def get_dataset(self):
-        chains = defaultdict(list)
-        for folder in sorted(os.listdir(preprocessed_dir)):
-            if folder[:4] in chains:
-                continue
-            for file in sorted(os.listdir(os.path.join(preprocessed_dir, folder))):
-                if file.startswith("feat"):
-                    chains[folder[:4]].append(folder + "/" + file[8:9])
-        return chains
-
-    def custom_cv(self):
-        for i in range(10):
-            train_indices = [self.pdb_to_index[el] for el in self.train_folds[i]]
-            valid_indices = [self.pdb_to_index[el] for el in self.valid_folds[i]]
-            #             yield train_indices[:24], valid_indices[:24]
-            yield train_indices, valid_indices
+                    pdb_id_struct = self.pdb_id_to_pdb_id_struct[line.strip()]
+                    for file in sorted(
+                        os.listdir(os.path.join(preprocessed_dir, pdb_id_struct))
+                    ):
+                        if file.startswith("feat"):
+                            tmp.append(pdb_id_struct + "/" + file[8:9])
+                train_folds.append(tmp)
+        return train_folds
 
     def __getitem__(self, index):
         pdb_id_struct, chain_id = self.dataset_list[index].split("/")

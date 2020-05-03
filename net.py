@@ -3,7 +3,7 @@ from collections import OrderedDict
 from torch.nn.functional import binary_cross_entropy
 from torch.utils.data import DataLoader, SubsetRandomSampler
 
-from datasets import collate_fn, fl_collate_fn
+from datasets import collate_fn
 from metrics import batch_loss, batch_metrics
 import pytorch_lightning as pl
 
@@ -13,10 +13,28 @@ class Net(pl.LightningModule):
         super().__init__()
         self.hparams = hparams
         self._dataset = dataset
-        self._folds = dataset.custom_cv()
-        self.train_indices, self.valid_indices = next(self._folds)
-        self.feat_vec_len = dataset[0][0].shape[0]
-        self._model = model_name(self.feat_vec_len, hparams)
+        self._model = model_name(dataset.feat_vec_len, hparams)
+
+    def prepare_data(self):
+        return super().prepare_data()
+
+    def train_dataloader(self):
+        return DataLoader(
+            self._dataset,
+            batch_size=self.hparams.batch_size,
+            sampler=SubsetRandomSampler(self._dataset.train_indices[0]),
+            collate_fn=collate_fn,
+            num_workers=8,
+        )
+
+    def val_dataloader(self):
+        return DataLoader(
+            self._dataset,
+            batch_size=self.hparams.batch_size,
+            sampler=SubsetRandomSampler(self._dataset.valid_indices[0]),
+            collate_fn=collate_fn,
+            num_workers=8,
+        )
 
     def forward(self, X, lengths):
         return self._model(X, lengths)
@@ -25,31 +43,11 @@ class Net(pl.LightningModule):
         optimizer = torch.optim.Adam(self.parameters(), lr=self.hparams.learning_rate)
         return [optimizer]
 
-    def train_dataloader(self):
-        return DataLoader(
-            self._dataset,
-            batch_size=1,
-            sampler=SubsetRandomSampler(self.train_indices),
-            collate_fn=collate_fn,
-        )
-
     def training_step(self, batch, batch_idx):
         X, y, lengths = batch
         y_pred = self(X, lengths)
         loss = batch_loss(y_pred, y, lengths, self._dataset.pos_weight)
         return {"loss": loss, "log": {"loss": loss}}
-
-    def training_epoch_end(self, outputs):
-        avg_loss = {"train_loss": torch.stack([el["loss"] for el in outputs]).mean()}
-        return {**avg_loss, "progress_bar": avg_loss, "log": avg_loss}
-
-    def val_dataloader(self):
-        return DataLoader(
-            self._dataset,
-            batch_size=1,
-            sampler=SubsetRandomSampler(self.valid_indices),
-            collate_fn=collate_fn,
-        )
 
     def validation_step(self, batch, batch_idx):
         X, y, lengths = batch
@@ -95,9 +93,9 @@ class GAN(pl.LightningModule):
     def train_dataloader(self):
         return DataLoader(
             self._dataset,
-            batch_size=1,
+            batch_size=self.hparams.batch_size,
             sampler=SubsetRandomSampler(self.train_indices),
-            collate_fn=fl_collate_fn,
+            collate_fn=collate_fn,
         )
 
     def adversarial_loss(self, y_pred, y):
@@ -112,8 +110,8 @@ class GAN(pl.LightningModule):
             valid = torch.ones(batch_size, 1).type(y[0][0].type())
             real_loss = batch_loss(self.y_pred, y, lengths, self._dataset.pos_weight)
             # adversarial loss is binary cross-entropy
-            fake_loss = self.adversarial_loss(self.discriminator(self.y_pred), valid)
-            g_loss = (real_loss + fake_loss) / 2
+            adv_loss = self.adversarial_loss(self.discriminator(self.y_pred), valid)
+            g_loss = (real_loss * (1536 / batch_size) + adv_loss) / 2
             tqdm_dict = {"g_loss": g_loss}
             output = OrderedDict(
                 {"loss": g_loss, "progress_bar": tqdm_dict, "log": tqdm_dict}
@@ -139,16 +137,12 @@ class GAN(pl.LightningModule):
             )
             return output
 
-    def training_epoch_end(self, outputs):
-        avg_loss = {"train_loss": torch.stack([el["loss"] for el in outputs]).mean()}
-        return {**avg_loss, "progress_bar": avg_loss, "log": avg_loss}
-
     def val_dataloader(self):
         return DataLoader(
             self._dataset,
-            batch_size=1,
+            batch_size=self.hparams.batch_size,
             sampler=SubsetRandomSampler(self.valid_indices),
-            collate_fn=fl_collate_fn,
+            collate_fn=collate_fn,
         )
 
     def validation_step(self, batch, batch_idx):
