@@ -5,7 +5,7 @@ import torch
 from torch.nn.functional import binary_cross_entropy
 from torch.utils.data import DataLoader, SubsetRandomSampler
 
-from datasets import Kalasanty, collate_fn
+from datasets import Kalasanty, Chen, collate_fn
 from metrics import batch_loss, batch_metrics
 from models import Discriminator, Generator
 
@@ -14,23 +14,32 @@ class Net(pl.LightningModule):
     def __init__(self, hparams, model_class):
         super().__init__()
         self.hparams = hparams
-        self._dataset = Kalasanty(precompute_class_weights=True, fixed_length=False)
-        self._model = model_class(self._dataset.feat_vec_len, hparams)
+        self.train_ds = Kalasanty(precompute_class_weights=True, fixed_length=False)
+        self.test_ds = Chen()
+        self._model = model_class(self.train_ds.feat_vec_len, hparams)
 
     def train_dataloader(self):
         return DataLoader(
-            self._dataset,
+            self.train_ds,
             batch_size=self.hparams.batch_size,
-            sampler=SubsetRandomSampler(self._dataset.train_indices[0]),
+            sampler=SubsetRandomSampler(self.train_ds.train_indices[0]),
             collate_fn=collate_fn,
             num_workers=10,
         )
 
     def val_dataloader(self):
         return DataLoader(
-            self._dataset,
+            self.train_ds,
             batch_size=self.hparams.batch_size,
-            sampler=SubsetRandomSampler(self._dataset.valid_indices[0]),
+            sampler=SubsetRandomSampler(self.train_ds.valid_indices[0]),
+            collate_fn=collate_fn,
+            num_workers=10,
+        )
+
+    def test_dataloader(self):
+        return DataLoader(
+            self.test_ds,
+            batch_size=self.hparams.batch_size,
             collate_fn=collate_fn,
             num_workers=10,
         )
@@ -65,16 +74,19 @@ class Net(pl.LightningModule):
     def training_step(self, batch, batch_idx):
         X, y, lengths = batch
         y_pred = self(X, lengths)
-        loss = batch_loss(y_pred, y, lengths, self._dataset.pos_weight)
+        loss = batch_loss(y_pred, y, lengths, self.train_ds.pos_weight)
         return {"loss": loss, "log": {"loss": loss}}
 
-    def validation_step(self, batch, batch_idx):
+    def val_test_step(self, batch, batch_idx, prefix):
         X, y, lengths = batch
         y_pred = self(X, lengths)
-        metrics = OrderedDict({"val_loss": batch_loss(y_pred, y, lengths)})
+        metrics = OrderedDict({prefix + "loss": batch_loss(y_pred, y, lengths)})
         for key, val in batch_metrics(y_pred, y, lengths).items():
-            metrics["val_" + key] = val
+            metrics[prefix + key] = val
         return metrics
+
+    def validation_step(self, batch, batch_idx):
+        return self.val_test_step(batch, batch_idx, "val_")
 
     def validation_epoch_end(self, outputs):
         avg_metrics = OrderedDict(
@@ -82,12 +94,18 @@ class Net(pl.LightningModule):
         )
         return {**avg_metrics, "progress_bar": avg_metrics, "log": avg_metrics}
 
+    def test_step(self, batch, batch_idx):
+        return self.val_test_step(batch, batch_idx, "test_")
+
+    def test_epoch_end(self, outputs):
+        return self.validation_epoch_end(outputs)
+
 
 class GAN(pl.LightningModule):
     def __init__(self, hparams, dataset):
         super().__init__()
         self.hparams = hparams
-        self._dataset = dataset
+        self.train_ds = dataset
         self._folds = dataset.custom_cv()
         self.train_indices, self.valid_indices = next(self._folds)
         self.feat_vec_len = dataset[0][0].shape[0]
@@ -108,7 +126,7 @@ class GAN(pl.LightningModule):
 
     def train_dataloader(self):
         return DataLoader(
-            self._dataset,
+            self.train_ds,
             batch_size=self.hparams.batch_size,
             sampler=SubsetRandomSampler(self.train_indices),
             collate_fn=collate_fn,
@@ -124,7 +142,7 @@ class GAN(pl.LightningModule):
         if optimizer_idx == 0:
             self.y_pred = self(X, lengths)
             valid = torch.ones(batch_size, 1).type(y[0][0].type())
-            real_loss = batch_loss(self.y_pred, y, lengths, self._dataset.pos_weight)
+            real_loss = batch_loss(self.y_pred, y, lengths, self.train_ds.pos_weight)
             # adversarial loss is binary cross-entropy
             adv_loss = self.adversarial_loss(self.discriminator(self.y_pred), valid)
             g_loss = (real_loss * (1536 / batch_size) + adv_loss) / 2
@@ -155,7 +173,7 @@ class GAN(pl.LightningModule):
 
     def val_dataloader(self):
         return DataLoader(
-            self._dataset,
+            self.train_ds,
             batch_size=self.hparams.batch_size,
             sampler=SubsetRandomSampler(self.valid_indices),
             collate_fn=collate_fn,

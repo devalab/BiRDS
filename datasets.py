@@ -8,10 +8,6 @@ import torch
 from torch.utils.data import Dataset
 from tqdm import tqdm
 
-data_dir = os.path.abspath("./data/scPDB")
-splits_dir = os.path.join(data_dir, "splits")
-preprocessed_dir = os.path.join(data_dir, "preprocessed")
-
 
 # A collate function to merge samples into a minibatch, will be used by DataLoader
 def collate_fn(samples):
@@ -37,9 +33,39 @@ def collate_fn(samples):
     return X, y, lengths
 
 
+class Chen(Dataset):
+    def __init__(self):
+        super().__init__()
+        self.data_dir = os.path.abspath("./data/chen")
+        self.preprocessed_dir = os.path.join(self.data_dir, "preprocessed")
+        self.dataset_list = self.get_dataset_list()
+        self.pdb_id_to_index = defaultdict(int)
+        for i, val in enumerate(self.dataset_list):
+            self.pdb_id_to_index[val] = i
+
+    def get_dataset_list(self):
+        available = []
+        for file in sorted(os.listdir(self.preprocessed_dir)):
+            available.append(file)
+        return sorted(available)
+
+    def __getitem__(self, index):
+        pdb_id = self.dataset_list[index]
+        X = torch.from_numpy(
+            np.load(os.path.join(self.preprocessed_dir, pdb_id, "features.npy"))
+        )
+        y = torch.from_numpy(
+            np.load(os.path.join(self.preprocessed_dir, pdb_id, "labels.npy"))
+        )
+        return X, y
+
+
 class Kalasanty(Dataset):
     def __init__(self, precompute_class_weights=False, fixed_length=False):
         super().__init__()
+        self.data_dir = os.path.abspath("./data/scPDB")
+        self.splits_dir = os.path.join(self.data_dir, "splits")
+        self.preprocessed_dir = os.path.join(self.data_dir, "preprocessed")
         self.pdb_id_to_pdb_id_struct = self.get_mapping()
         self.train_folds = self.get_train_folds()
         self.dataset_list = self.train_folds[0].union(self.train_folds[1])
@@ -56,11 +82,10 @@ class Kalasanty(Dataset):
         self.train_indices, self.valid_indices = self.custom_cv()
         self.feat_vec_len = self[0][0].shape[0]
 
-    @staticmethod
-    def get_mapping():
+    def get_mapping(self):
         # There are multiple structures for a particular pdb_id, taking the first one
         available = defaultdict(str)
-        for file in sorted(os.listdir(preprocessed_dir)):
+        for file in sorted(os.listdir(self.preprocessed_dir)):
             if file[:4] not in available:
                 available[file[:4]] = file
         return available
@@ -68,7 +93,7 @@ class Kalasanty(Dataset):
     def get_train_folds(self):
         train_folds = []
         for i in range(10):
-            with open(os.path.join(splits_dir, "train_ids_fold" + str(i))) as f:
+            with open(os.path.join(self.splits_dir, "train_ids_fold" + str(i))) as f:
                 tmp = set()
                 for line in f.readlines():
                     tmp.add(self.pdb_id_to_pdb_id_struct[line.strip()])
@@ -79,7 +104,7 @@ class Kalasanty(Dataset):
         extras = set()
         for pdb_id_struct in tqdm(self.dataset_list, leave=False):
             if not os.path.exists(
-                os.path.join(preprocessed_dir, pdb_id_struct, "features.npy")
+                os.path.join(self.preprocessed_dir, pdb_id_struct, "features.npy")
             ):
                 extras.add(pdb_id_struct)
         for i in range(10):
@@ -97,7 +122,9 @@ class Kalasanty(Dataset):
         zeros = 0
         ones = 0
         for pdb_id_struct in tqdm(self.dataset_list, leave=False):
-            y = np.load(os.path.join(preprocessed_dir, pdb_id_struct, "labels.npy"))
+            y = np.load(
+                os.path.join(self.preprocessed_dir, pdb_id_struct, "labels.npy")
+            )
             one = np.count_nonzero(y)
             ones += one
             zeros += len(y) - one
@@ -120,10 +147,10 @@ class Kalasanty(Dataset):
     def __getitem__(self, index):
         pdb_id_struct = self.dataset_list[index]
         X = torch.from_numpy(
-            np.load(os.path.join(preprocessed_dir, pdb_id_struct, "features.npy"))
+            np.load(os.path.join(self.preprocessed_dir, pdb_id_struct, "features.npy"))
         )
         y = torch.from_numpy(
-            np.load(os.path.join(preprocessed_dir, pdb_id_struct, "labels.npy"))
+            np.load(os.path.join(self.preprocessed_dir, pdb_id_struct, "labels.npy"))
         )
         return X, y
 
@@ -137,12 +164,12 @@ class KalasantyChains(Kalasanty):
     def get_train_folds(self):
         train_folds = []
         for i in range(10):
-            with open(os.path.join(splits_dir, "train_ids_fold" + str(i))) as f:
+            with open(os.path.join(self.splits_dir, "train_ids_fold" + str(i))) as f:
                 tmp = set()
                 for line in f.readlines():
                     pdb_id_struct = self.pdb_id_to_pdb_id_struct[line.strip()]
                     for file in sorted(
-                        os.listdir(os.path.join(preprocessed_dir, pdb_id_struct))
+                        os.listdir(os.path.join(self.preprocessed_dir, pdb_id_struct))
                     ):
                         if file.startswith("feat"):
                             tmp.append(pdb_id_struct + "/" + file[8:9])
@@ -154,14 +181,16 @@ class KalasantyChains(Kalasanty):
         X = torch.from_numpy(
             np.load(
                 os.path.join(
-                    preprocessed_dir, pdb_id_struct, "features_" + chain_id + ".npy"
+                    self.preprocessed_dir,
+                    pdb_id_struct,
+                    "features_" + chain_id + ".npy",
                 )
             )
         )
         y = torch.from_numpy(
             np.load(
                 os.path.join(
-                    preprocessed_dir, pdb_id_struct, "labels_" + chain_id + ".npy"
+                    self.preprocessed_dir, pdb_id_struct, "labels_" + chain_id + ".npy"
                 )
             )
         )

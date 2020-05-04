@@ -47,6 +47,7 @@ def main(hparams, model_class):
         # overfit_pct=0.01,
     )
     trainer.fit(net)
+    trainer.test()
 
 
 if __name__ == "__main__":
@@ -59,7 +60,7 @@ if __name__ == "__main__":
         choices=["resnet", "bilstm", "bigru", "stackedconv", "stackednn", "unet"],
     )
     parser.add_argument("--gpus", default=1, type=int)
-    parser.add_argument("--max_epochs", default=200, type=int)
+    parser.add_argument("--max_epochs", default=50, type=int)
     parser.add_argument("--batch_size", default=32, type=int)
     parser.add_argument("--learning_rate", default=0.01, type=float)
 
