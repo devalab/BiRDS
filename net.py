@@ -1,22 +1,21 @@
-import torch
 from collections import OrderedDict
+
+import pytorch_lightning as pl
+import torch
 from torch.nn.functional import binary_cross_entropy
 from torch.utils.data import DataLoader, SubsetRandomSampler
 
-from datasets import collate_fn
+from datasets import Kalasanty, collate_fn
 from metrics import batch_loss, batch_metrics
-import pytorch_lightning as pl
+from models import Discriminator, Generator
 
 
 class Net(pl.LightningModule):
-    def __init__(self, hparams, model_name, dataset):
+    def __init__(self, hparams, model_class):
         super().__init__()
         self.hparams = hparams
-        self._dataset = dataset
-        self._model = model_name(dataset.feat_vec_len, hparams)
-
-    def prepare_data(self):
-        return super().prepare_data()
+        self._dataset = Kalasanty(precompute_class_weights=True, fixed_length=False)
+        self._model = model_class(self._dataset.feat_vec_len, hparams)
 
     def train_dataloader(self):
         return DataLoader(
@@ -24,7 +23,7 @@ class Net(pl.LightningModule):
             batch_size=self.hparams.batch_size,
             sampler=SubsetRandomSampler(self._dataset.train_indices[0]),
             collate_fn=collate_fn,
-            num_workers=8,
+            num_workers=10,
         )
 
     def val_dataloader(self):
@@ -33,7 +32,7 @@ class Net(pl.LightningModule):
             batch_size=self.hparams.batch_size,
             sampler=SubsetRandomSampler(self._dataset.valid_indices[0]),
             collate_fn=collate_fn,
-            num_workers=8,
+            num_workers=10,
         )
 
     def forward(self, X, lengths):
@@ -41,7 +40,27 @@ class Net(pl.LightningModule):
 
     def configure_optimizers(self):
         optimizer = torch.optim.Adam(self.parameters(), lr=self.hparams.learning_rate)
-        return [optimizer]
+        scheduler = {
+            "scheduler": torch.optim.lr_scheduler.ReduceLROnPlateau(
+                optimizer, mode="max", patience=5, verbose=True
+            ),
+            "monitor": "val_mcc",
+        }
+        return [optimizer], [scheduler]
+
+    # learning rate warm-up
+    def optimizer_step(
+        self, current_epoch, batch_nb, optimizer, optimizer_i, second_order_closure=None
+    ):
+        # warm up lr
+        if self.trainer.global_step < 500:
+            lr_scale = min(1.0, float(self.trainer.global_step + 1) / 500.0)
+            for pg in optimizer.param_groups:
+                pg["lr"] = lr_scale * self.hparams.learning_rate
+
+        # update params
+        optimizer.step()
+        optimizer.zero_grad()
 
     def training_step(self, batch, batch_idx):
         X, y, lengths = batch
@@ -62,9 +81,6 @@ class Net(pl.LightningModule):
             {key: torch.stack([el[key] for el in outputs]).mean() for key in outputs[0]}
         )
         return {**avg_metrics, "progress_bar": avg_metrics, "log": avg_metrics}
-
-
-from models import Generator, Discriminator
 
 
 class GAN(pl.LightningModule):
