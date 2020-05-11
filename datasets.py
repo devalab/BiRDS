@@ -59,6 +59,9 @@ class Chen(Dataset):
         )
         return X, y
 
+    def __len__(self):
+        return len(self.dataset_list)
+
 
 class Kalasanty(Dataset):
     def __init__(self, precompute_class_weights=False, fixed_length=False):
@@ -154,6 +157,9 @@ class Kalasanty(Dataset):
         )
         return X, y
 
+    def __len__(self):
+        return len(self.dataset_list)
+
 
 class KalasantyChains(Kalasanty):
     def __init__(self, precompute_class_weights=False, fixed_length=False):
@@ -172,7 +178,7 @@ class KalasantyChains(Kalasanty):
                         os.listdir(os.path.join(self.preprocessed_dir, pdb_id_struct))
                     ):
                         if file.startswith("feat"):
-                            tmp.append(pdb_id_struct + "/" + file[8:9])
+                            tmp.add(pdb_id_struct + "/" + file[9:10])
                 train_folds.append(tmp)
         return train_folds
 

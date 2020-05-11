@@ -6,12 +6,6 @@ from torch.nn.functional import binary_cross_entropy_with_logits
 SMOOTH = 1e-6
 
 
-def IOU(output, target):
-    intersection = (output & target).float().sum()
-    union = (output | target).float().sum()
-    return (intersection) / (union)
-
-
 def CM(output, target):
     # Get Confusion Matrix
     cm = {}
@@ -20,6 +14,10 @@ def CM(output, target):
     cm["fp"] = (~target * output).sum().float() + SMOOTH
     cm["fn"] = (target * ~output).sum().float() + SMOOTH
     return cm
+
+
+def IOU(cm):
+    return cm["tp"] / (cm["tp"] + cm["fp"] + cm["fn"])
 
 
 def MCC(cm):
@@ -44,10 +42,7 @@ def PRECISION(cm):
 
 
 def F1(cm):
-    precision = PRECISION(cm)
-    recall = RECALL(cm)
-    f1 = 2 * (precision * recall) / (precision + recall)
-    return f1
+    return (2 * cm["tp"]) / (2 * cm["tp"] + cm["fp"] + cm["fn"])
 
 
 def LOSS(output, target, pos_weight):
@@ -79,7 +74,7 @@ def batch_metrics(outputs, targets, lengths, reduction="mean"):
             {
                 "mcc": MCC(cm),
                 "acc": ACCURACY(cm),
-                "iou": IOU(output, target),
+                "iou": IOU(cm),
                 "precision": PRECISION(cm),
                 "recall": RECALL(cm),
                 "f1": F1(cm),

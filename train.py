@@ -6,13 +6,13 @@ from pytorch_lightning import Trainer
 from pytorch_lightning.callbacks import ModelCheckpoint
 from pytorch_lightning.loggers import TestTubeLogger
 
-from net import GAN, Net  # noqa: F401
+from net import Net
 
 
 class MyModelCheckpoint(ModelCheckpoint):
     def format_checkpoint_name(self, epoch, metrics, ver=None):
         if self.filename == "{epoch}":
-            self.filename = "{epoch}-{val_mcc:.3f}"
+            self.filename = "{epoch}-{val_mcc:.3f}-{val_acc:.3f}-{val_f1:.3f}"
         return super().format_checkpoint_name(epoch, metrics, ver)
 
 
@@ -44,10 +44,11 @@ def main(hparams, model_class):
         accumulate_grad_batches=accumulate_grad_batches,
         gradient_clip_val=gradient_clip_val,
         # fast_dev_run=True,
-        # overfit_pct=0.01,
+        overfit_pct=0.01,
     )
     trainer.fit(net)
-    trainer.test()
+    if hparams.testing:
+        trainer.test()
 
 
 if __name__ == "__main__":
@@ -63,21 +64,17 @@ if __name__ == "__main__":
     parser.add_argument("--max_epochs", default=50, type=int)
     parser.add_argument("--batch_size", default=32, type=int)
     parser.add_argument("--learning_rate", default=0.01, type=float)
+    parser.add_argument("--testing", dest="testing", action="store_true")
+    parser.add_argument("--no-testing", dest="testing", action="store_false")
+    parser.set_defaults(testing=True)
 
     # add model specific args
+    parser = Net.add_model_specific_args(parser)
     tmp_args = parser.parse_known_args()[0]
     if tmp_args.model == "resnet":
         from models import ResNet as model_class
     elif tmp_args.model == "bilstm":
         from models import BiLSTM as model_class
-    elif tmp_args.model == "bigru":
-        from models import BiGRU as model_class
-    elif tmp_args.model == "stackedconv":
-        from models import StackedConv as model_class
-    elif tmp_args.model == "stackednn":
-        from models import StackedNN as model_class
-    elif tmp_args.model == "unet":
-        from models import UNet as model_class
     parser = model_class.add_model_specific_args(parser)
 
     hparams = parser.parse_args()

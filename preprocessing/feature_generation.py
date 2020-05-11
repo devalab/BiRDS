@@ -2,10 +2,11 @@
 # Some constants that will be required
 # ALWAYS RUN THIS CODE CELL
 import os
+from tqdm.auto import tqdm
 
 data_dir = os.path.abspath("../data/scPDB")
 raw_dir = os.path.join(data_dir, "raw")
-pssm_dir = os.path.join(data_dir, "pssm")
+msa_dir = os.path.join(data_dir, "msa")
 splits_dir = os.path.join(data_dir, "splits")
 preprocessed_dir = os.path.join(data_dir, "preprocessed")
 
@@ -67,8 +68,7 @@ preprocessed_dir = os.path.join(data_dir, "preprocessed")
 
 
 # %%
-# Assuming that all the PSSMs have been copied to data/scPDB/pssm
-# We can have more features included as well. For now, let us consider PSSMs
+# Assuming that all the MSA features have been copied to data/scPDB/msa
 import csv
 from collections import defaultdict
 
@@ -118,30 +118,38 @@ AA_ID_DICT = {
 }
 AA_ID_DICT = defaultdict(lambda: 0, AA_ID_DICT)
 
-# We generated PSSMs for select sequences
+# We generated MSA features for select sequences
 # Mapping different sequences to the one for which we generated
-common_pssms = defaultdict(str)
+common_msas = defaultdict(str)
 with open(os.path.join(data_dir, "unique"), "r") as f:
     for line in f.readlines():
         line = line.strip().split()
-        pssm_generated_for = line[0][:-1]
-        common_pssms[pssm_generated_for] = pssm_generated_for
+        msa_generated_for = line[0][:-1]
+        common_msas[msa_generated_for] = msa_generated_for
         for pdb_id_struct_chain in line[1:]:
             pdb_id_struct_chain = pdb_id_struct_chain[:-1]
-            common_pssms[pdb_id_struct_chain] = pssm_generated_for
+            common_msas[pdb_id_struct_chain] = msa_generated_for
 
 
-def get_pssm(pdb_id_struct, chain_id, length):
-    pssm_pdb_id_struct, pssm_chain_id = common_pssms[
-        pdb_id_struct + "/" + chain_id
-    ].split("/")
-    with open(
-        os.path.join(pssm_dir, pssm_pdb_id_struct, pssm_chain_id + ".pssm"), "r"
-    ) as f:
+def get_feature(pdb_id_struct, chain_id, length, feat_type):
+    msa_pdb, msa_chain = common_msas[pdb_id_struct + "/" + chain_id].split("/")
+    with open(os.path.join(msa_dir, msa_pdb, msa_chain + "." + feat_type), "r") as f:
         lines = f.readlines()
-    feature = np.zeros((21, length))
-    for i, line in enumerate(lines):
-        feature[i] = np.array(line.strip().split(), dtype=np.float32)
+    if feat_type == "pssm":
+        feature = np.array([line.strip().split() for line in lines], dtype=np.float32)
+    elif feat_type == "aap":
+        feature = np.array(
+            [line.strip().split()[1:] for line in lines[2:-1]], dtype=np.float32
+        ).T
+    elif feat_type == "ss2":
+        feature = np.array(
+            [line.strip().split()[3:] for line in lines[2:]], dtype=np.float32
+        ).T
+    elif feat_type == "solv":
+        feature = np.array(
+            [line.strip().split()[2] for line in lines], dtype=np.float32
+        )[np.newaxis, :]
+    assert feature.shape[1] == length
     return feature
 
 
@@ -158,23 +166,32 @@ import numpy as np  # noqa: F811
 
 
 # Without using distance map
-feat_vec_len = 21 + 1 + 21 + len(AA_sel_feats["X"])
+feat_vec_len = 21 + 1 + 20 + 3 + 1
 
 
-def generate_input(sample):
-    X = np.zeros((feat_vec_len, sample["length"]))
+def generate_input(sample, pdb_id_struct, chain_id):
+    seq_len = sample["length"].item()
+    X = np.zeros((feat_vec_len, seq_len))
 
     # One-hot encoding
-    X[:21] = np.array([np.eye(21)[AA_ID_DICT[el]] for el in sample["sequence"]]).T
+    X[:21] = np.array(
+        [np.eye(21)[AA_ID_DICT[el]] for el in sample["sequence"].item()]
+    ).T
 
     # Positional encoding
-    X[21] = np.arange(1, sample["length"] + 1, dtype=np.float32) / sample["length"]
+    X[21] = np.arange(1, seq_len + 1, dtype=np.float32) / seq_len
 
     # PSSM
-    X[22:43] = sample["pssm"]
+    # X[22:43] = get_feature(pdb_id_struct, chain_id, seq_len, "pssm")
 
-    # AA Properties
-    X[43:] = np.array([AA_sel_feats[aa] for aa in sample["sequence"]]).T
+    # Amino acid probabilities
+    X[22:42] = get_feature(pdb_id_struct, chain_id, seq_len, "aap")
+
+    # Secondary structure
+    X[42:45] = get_feature(pdb_id_struct, chain_id, seq_len, "ss2")
+
+    # Solvent accessibility
+    X[45] = get_feature(pdb_id_struct, chain_id, seq_len, "solv")
 
     return X
 
@@ -244,7 +261,7 @@ def generate_input(sample):
 # USING CONCATENATION STRATEGY
 
 # For creating features
-for pdb_id_struct in sorted(os.listdir(preprocessed_dir)):
+for pdb_id_struct in tqdm(sorted(os.listdir(preprocessed_dir))):
     flg = True
     pre = os.path.join(preprocessed_dir, pdb_id_struct)
     features_file = os.path.join(pre, "features.npy")
@@ -253,26 +270,21 @@ for pdb_id_struct in sorted(os.listdir(preprocessed_dir)):
         continue
     print(pdb_id_struct)
 
-    for file in sorted(os.listdir(pre)):
+    for file in tqdm(sorted(os.listdir(pre))):
         chain_id = file[-len(".npz") - 1 : -len(".npz")]
         sample = np.load(os.path.join(pre, file))
-        sample = {
-            key: sample[key].item() if sample[key].shape == () else sample[key]
-            for key in sample
-        }
-        sample["pssm"] = get_pssm(pdb_id_struct, chain_id, sample["length"])
         if flg:
             X = generate_input(sample)
             flg = False
         else:
             # Using concatenation strategy
-            tmp = generate_input(sample)
+            tmp = generate_input(sample, pdb_id_struct, chain_id)
             X = np.concatenate((X, tmp), 1)
 
     np.save(features_file, X)
 
 # For creating labels
-# for pdb_id_struct in sorted(os.listdir(preprocessed_dir)):
+# for pdb_id_struct in tqdm(sorted(os.listdir(preprocessed_dir))):
 #     flg = True
 #     pre = os.path.join(preprocessed_dir, pdb_id_struct)
 #     labels_file = os.path.join(pre, "labels.npy")
@@ -281,7 +293,7 @@ for pdb_id_struct in sorted(os.listdir(preprocessed_dir)):
 #         continue
 #     print(pdb_id_struct)
 
-#     for file in sorted(os.listdir(pre)):
+#     for file in tqdm(sorted(os.listdir(pre))):
 #         chain_id = file[-len(".npz") - 1 : -len(".npz")]
 #         sample = np.load(os.path.join(pre, file))
 #         sample = {
@@ -298,9 +310,9 @@ for pdb_id_struct in sorted(os.listdir(preprocessed_dir)):
 
 
 # SAVING ALL CHAINS AS DIFFERENT PROTEINS
-# for pdb_id_struct in sorted(os.listdir(preprocessed_dir)):
+# for pdb_id_struct in tqdm(sorted(os.listdir(preprocessed_dir))):
 #     pre = os.path.join(preprocessed_dir, pdb_id_struct)
-#     for file in sorted(os.listdir(pre)):
+#     for file in tqdm(sorted(os.listdir(pre))):
 #         if not file.endswith(".npz"):
 #             continue
 #         chain_id = file[-len(".npz") - 1 : -len(".npz")]
@@ -318,9 +330,9 @@ for pdb_id_struct in sorted(os.listdir(preprocessed_dir)):
 #         np.save(features_file, X)
 
 
-# for pdb_id_struct in sorted(os.listdir(preprocessed_dir)):
+# for pdb_id_struct in tqdm(sorted(os.listdir(preprocessed_dir))):
 #     pre = os.path.join(preprocessed_dir, pdb_id_struct)
-#     for file in sorted(os.listdir(pre)):
+#     for file in tqdm(sorted(os.listdir(pre))):
 #         if not file.endswith(".npz"):
 #             continue
 #         chain_id = file[-len(".npz") - 1 : -len(".npz")]

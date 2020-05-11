@@ -1,13 +1,12 @@
+from argparse import ArgumentParser
 from collections import OrderedDict
 
 import pytorch_lightning as pl
 import torch
-from torch.nn.functional import binary_cross_entropy
 from torch.utils.data import DataLoader, SubsetRandomSampler
 
-from datasets import Kalasanty, Chen, collate_fn
+from datasets import Chen, Kalasanty, collate_fn
 from metrics import batch_loss, batch_metrics
-from models import Discriminator, Generator
 
 
 class Net(pl.LightningModule):
@@ -15,8 +14,33 @@ class Net(pl.LightningModule):
         super().__init__()
         self.hparams = hparams
         self.train_ds = Kalasanty(precompute_class_weights=True, fixed_length=False)
-        self.test_ds = Chen()
-        self._model = model_class(self.train_ds.feat_vec_len, hparams)
+        if hparams.testing:
+            self.test_ds = Chen()
+        self.embedding_model = model_class(self.train_ds.feat_vec_len, hparams)
+        dummy = torch.ones((1, self.train_ds.feat_vec_len, 100))
+        self.embedding_dim = self.embedding_model(dummy, dummy.shape[2]).shape[1]
+
+        self.fc_layers = torch.nn.ModuleList([])
+        feat_vec_len = self.embedding_dim
+        for unit in hparams.num_units:
+            self.fc_layers.append(torch.nn.Linear(feat_vec_len, unit))
+            self.fc_layers.append(torch.nn.ReLU())
+            self.fc_layers.append(torch.nn.Dropout(hparams.dropout))
+            feat_vec_len = unit
+        self.fc_layers.append(torch.nn.Linear(hparams.num_units[-1], 1))
+
+    def forward(self, X, lengths):
+        # [Batch, hidden_sizes[-1], Max_length]
+        output = self.embedding_model(X, lengths)
+
+        # [Batch, hidden_sizes[-1], Max_length] -> [Batch * Max_length, 1]
+        output = output.transpose(1, 2).contiguous().view(-1, self.embedding_dim)
+        for layer in self.fc_layers:
+            output = layer(output)
+
+        # [Batch * Max_length, 1] -> [Batch, Max_length]
+        output = output.view(-1, lengths[0])
+        return output
 
     def train_dataloader(self):
         return DataLoader(
@@ -43,9 +67,6 @@ class Net(pl.LightningModule):
             collate_fn=collate_fn,
             num_workers=10,
         )
-
-    def forward(self, X, lengths):
-        return self._model(X, lengths)
 
     def configure_optimizers(self):
         optimizer = torch.optim.Adam(self.parameters(), lr=self.hparams.learning_rate)
@@ -100,95 +121,20 @@ class Net(pl.LightningModule):
     def test_epoch_end(self, outputs):
         return self.validation_epoch_end(outputs)
 
-
-class GAN(pl.LightningModule):
-    def __init__(self, hparams, dataset):
-        super().__init__()
-        self.hparams = hparams
-        self.train_ds = dataset
-        self._folds = dataset.custom_cv()
-        self.train_indices, self.valid_indices = next(self._folds)
-        self.feat_vec_len = dataset[0][0].shape[0]
-        self.generator = Generator(self.feat_vec_len, hparams)
-        self.discriminator = Discriminator()
-
-    def forward(self, X, lengths):
-        return self.generator(X)
-
-    def configure_optimizers(self):
-        opt_g = torch.optim.Adam(
-            self.generator.parameters(), lr=self.hparams.learning_rate
+    @staticmethod
+    def add_model_specific_args(parent_parser):
+        parser = ArgumentParser(parents=[parent_parser], add_help=False)
+        parser.add_argument(
+            "--num_units",
+            nargs="+",
+            type=int,
+            default=[8],
+            help="Number of units that the fully connected layer has. Default: 8",
         )
-        opt_d = torch.optim.Adam(
-            self.discriminator.parameters(), lr=self.hparams.learning_rate
+        parser.add_argument(
+            "--dropout",
+            type=float,
+            default=0.2,
+            help="Dropout between the fully connected layers. Default 0.2",
         )
-        return opt_g, opt_d
-
-    def train_dataloader(self):
-        return DataLoader(
-            self.train_ds,
-            batch_size=self.hparams.batch_size,
-            sampler=SubsetRandomSampler(self.train_indices),
-            collate_fn=collate_fn,
-        )
-
-    def adversarial_loss(self, y_pred, y):
-        return binary_cross_entropy(y_pred, y)
-
-    def training_step(self, batch, batch_idx, optimizer_idx):
-        X, y, lengths = batch
-        batch_size = y.shape[0]
-        # train generator
-        if optimizer_idx == 0:
-            self.y_pred = self(X, lengths)
-            valid = torch.ones(batch_size, 1).type(y[0][0].type())
-            real_loss = batch_loss(self.y_pred, y, lengths, self.train_ds.pos_weight)
-            # adversarial loss is binary cross-entropy
-            adv_loss = self.adversarial_loss(self.discriminator(self.y_pred), valid)
-            g_loss = (real_loss * (1536 / batch_size) + adv_loss) / 2
-            tqdm_dict = {"g_loss": g_loss}
-            output = OrderedDict(
-                {"loss": g_loss, "progress_bar": tqdm_dict, "log": tqdm_dict}
-            )
-            return output
-
-        # train discriminator
-        if optimizer_idx == 1:
-            # Measure discriminator's ability to classify real from generated samples
-            # how well can it label as real?
-            valid = torch.ones(batch_size, 1).type(y[0][0].type())
-            real_loss = self.adversarial_loss(self.discriminator(y), valid)
-            # how well can it label as fake?
-            fake = torch.zeros(batch_size, 1).type(y[0][0].type())
-            fake_loss = self.adversarial_loss(
-                self.discriminator(self.y_pred.detach()), fake
-            )
-            # discriminator loss is the average of these
-            d_loss = (real_loss + fake_loss) / 2
-            tqdm_dict = {"d_loss": d_loss}
-            output = OrderedDict(
-                {"loss": d_loss, "progress_bar": tqdm_dict, "log": tqdm_dict}
-            )
-            return output
-
-    def val_dataloader(self):
-        return DataLoader(
-            self.train_ds,
-            batch_size=self.hparams.batch_size,
-            sampler=SubsetRandomSampler(self.valid_indices),
-            collate_fn=collate_fn,
-        )
-
-    def validation_step(self, batch, batch_idx):
-        X, y, lengths = batch
-        y_pred = self(X, lengths)
-        metrics = OrderedDict({"val_loss": batch_loss(y_pred, y, lengths)})
-        for key, val in batch_metrics(y_pred, y, lengths).items():
-            metrics["val_" + key] = val
-        return metrics
-
-    def validation_epoch_end(self, outputs):
-        avg_metrics = OrderedDict(
-            {key: torch.stack([el[key] for el in outputs]).mean() for key in outputs[0]}
-        )
-        return {**avg_metrics, "progress_bar": avg_metrics, "log": avg_metrics}
+        return parser
