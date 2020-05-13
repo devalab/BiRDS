@@ -1,5 +1,3 @@
-from argparse import ArgumentParser
-
 import torch
 from torch.nn.utils.rnn import pack_padded_sequence, pad_packed_sequence
 
@@ -60,7 +58,7 @@ class BasicBlock(torch.nn.Module):
 
 class MakeResNet(torch.nn.Module):
     def __init__(
-        self, layers, kernel_size, feat_vec_len, hidden_sizes, norm_layer=None,
+        self, layers, kernel_size, input_size, hidden_sizes, norm_layer=None,
     ):
         super().__init__()
         if norm_layer is None:
@@ -69,7 +67,7 @@ class MakeResNet(torch.nn.Module):
 
         self.start_planes = hidden_sizes[0]
         self.conv1 = torch.nn.Conv1d(
-            in_channels=feat_vec_len,
+            in_channels=input_size,
             out_channels=self.start_planes,
             kernel_size=7,
             padding=3,
@@ -78,7 +76,7 @@ class MakeResNet(torch.nn.Module):
         self.bn1 = norm_layer(self.start_planes)
         self.relu = torch.nn.ReLU(inplace=True)
         self.depth = len(hidden_sizes)
-        self.maxpool = torch.nn.MaxPool1d(kernel_size=3, stride=1, padding=1)
+        # self.maxpool = torch.nn.MaxPool1d(kernel_size=3, stride=1, padding=1)
         self.layers = torch.nn.ModuleList([])
         for i in range(self.depth):
             self.layers.append(
@@ -123,7 +121,7 @@ class MakeResNet(torch.nn.Module):
         x = self.conv1(x)
         x = self.bn1(x)
         x = self.relu(x)
-        x = self.maxpool(x)
+        # x = self.maxpool(x)
 
         for i in range(self.depth):
             x = self.layers[i](x)
@@ -156,56 +154,115 @@ def resnet98(**kwargs):
 
 
 class ResNet(torch.nn.Module):
-    def __init__(self, feat_vec_len, hparams):
+    def __init__(self, input_size, hparams):
         super().__init__()
         assert len(hparams.layers) == len(hparams.hidden_sizes)
-        self.feat_vec_len = feat_vec_len
+        self.input_size = input_size
         self.resnet_layer = MakeResNet(
-            hparams.layers, hparams.kernel_sizes, feat_vec_len, hparams.hidden_sizes
+            hparams.layers, hparams.kernel_sizes, input_size, hparams.hidden_sizes
         )
 
     def forward(self, X, lengths, **kwargs):
-        # [Batch, feat_vec_len, Max_length] -> [Batch, hidden_sizes[-1], Max_length]
+        # [Batch, input_size, Max_length] -> [Batch, hidden_sizes[-1], Max_length]
         return self.resnet_layer(X)
 
     @staticmethod
-    def add_model_specific_args(parent_parser):
-        parser = ArgumentParser(parents=[parent_parser], add_help=False)
+    def add_model_specific_args(parser):
         parser.add_argument(
             "--layers",
             nargs="+",
             type=int,
             default=[2, 2, 2, 2],
-            help="The number of basic blocks to be used in each layer. Default: 2 2 2 2 forms Resnet-18",
+            help="The number of basic blocks to be used in each layer. Default: %(default)s",
         )
         parser.add_argument(
-            "--hidden_sizes",
+            "--hidden-sizes",
             nargs="+",
             type=int,
             default=[256, 128, 64, 32],
-            help="The size of the 1-D convolutional layers. Eg: 256 128 64 32",
+            help="The size of the 1-D convolutional layers. Default: %(default)s",
         )
         parser.add_argument(
-            "--kernel_sizes",
+            "--kernel-sizes",
             nargs="+",
             type=int,
             default=[7, 7],
-            help="Kernel sizes of the 2 convolutional layers that form the basic block of the Resnet. Default: 7 7",
+            help="Kernel sizes of the 2 convolutional layers of the basic block. Default: %(default)s",
+        )
+        return parser
+
+
+class CGenerator(torch.nn.Module):
+    def __init__(self, input_size, hparams):
+        super().__init__()
+        self.output_size = input_size
+        layers = []
+        for unit in hparams.generator_units:
+            layers.append(torch.nn.Linear(input_size, unit))
+            layers.append(torch.nn.LeakyReLU(0.2, True))
+            layers.append(torch.nn.Dropout(hparams.dropout))
+            input_size = unit
+        self.generator = torch.nn.Sequential(
+            *layers, torch.nn.Linear(input_size, self.output_size), torch.nn.Tanh()
+        )
+
+    def forward(self, X):
+        # [Batch, Max_len, input_size]
+        return self.generator(X)
+
+    @staticmethod
+    def add_model_specific_args(parser):
+        parser.add_argument(
+            "--generator-units",
+            nargs="+",
+            type=int,
+            default=[64, 64],
+            help="The number of units in each layer of the generator. Default: %(default)s",
+        )
+        return parser
+
+
+class Detector(torch.nn.Module):
+    def __init__(self, input_size, hparams):
+        super().__init__()
+        self.input_size = input_size
+        layers = []
+        for unit in hparams.detector_units:
+            layers.append(torch.nn.Linear(input_size, unit))
+            layers.append(torch.nn.LeakyReLU(0.2, True))
+            layers.append(torch.nn.Dropout(hparams.dropout))
+            input_size = unit
+        self.detector = torch.nn.Sequential(*layers, torch.nn.Linear(input_size, 1))
+        # torch.sigmoid will be done later in the loss function
+
+    def forward(self, X):
+        # [Batch, Max_len]
+        return self.detector(X).squeeze(dim=2)
+
+    @staticmethod
+    def add_model_specific_args(parser):
+        parser.add_argument(
+            "--detector-units",
+            metavar="UNIT",
+            nargs="+",
+            type=int,
+            default=[8],
+            help="The number of units in each layer of the detector. Default: %(default)s",
         )
         return parser
 
 
 class BiLSTM(torch.nn.Module):
-    def __init__(self, feat_vec_len, hparams):
+    def __init__(self, input_size, hparams):
         super().__init__()
-        self.feat_vec_len = feat_vec_len
+        self.input_size = input_size
         self.hidden_sizes = hparams.hidden_sizes
         self.depth = len(self.hidden_sizes)
         self.brnn = torch.nn.ModuleList([])
         for i in range(self.depth):
             self.brnn.append(
                 torch.nn.LSTM(
-                    input_size=feat_vec_len,
+                    input_size=input_size,
                     hidden_size=self.hidden_sizes[i],
                     num_layers=hparams.num_layers,
                     bias=True,
@@ -213,20 +270,20 @@ class BiLSTM(torch.nn.Module):
                     bidirectional=True,
                 )
             )
-            feat_vec_len = self.hidden_sizes[i]
+            input_size = self.hidden_sizes[i]
 
     def forward(self, X, lengths, **kwargs):
-        # [Batch, feat_vec_len, Max_length] -> [Max_length, Batch, feat_vec_len]
+        # [Batch, input_size, Max_length] -> [Max_length, Batch, input_size]
         output = X.transpose(1, 2).transpose(0, 1)
 
-        # [Max_length, Batch, feat_vec_len] -> [Max_length, Batch, hidden_sizes[-1]]
+        # [Max_length, Batch, input_size] -> [Max_length, Batch, hidden_sizes[-1]]
         batch_size = len(lengths)
         for i in range(self.depth):
             # pack_padded_sequence so that padded items in the sequence won't be shown to the LSTM
             output = pack_padded_sequence(output, lengths)
             # If we don't send hidden and cell state to LSTM, they default to zero
             # [Max_length, Batch, hidden_sizes[i-1]] -> [Max_length, Batch, 2 * hidden_sizes[i]]
-            # If i is 0 then hidden_sizes[i-1] is self.feat_vec_len
+            # If i is 0 then hidden_sizes[i-1] is self.input_size
             output, _ = self.brnn[i](output)
             # undo the packing operation
             output, _ = pad_packed_sequence(output)
@@ -240,19 +297,18 @@ class BiLSTM(torch.nn.Module):
         return output.transpose(0, 1).transpose(1, 2)
 
     @staticmethod
-    def add_model_specific_args(parent_parser):
-        parser = ArgumentParser(parents=[parent_parser], add_help=False)
+    def add_model_specific_args(parser):
         parser.add_argument(
-            "--hidden_sizes",
+            "--hidden-sizes",
             nargs="+",
             type=int,
             default=[256, 128, 64, 32],
-            help="The size of each stacked LSTM layers. Eg: 256 128 64 32",
+            help="The size of each stacked LSTM layers. Default: %(default)s",
         )
         parser.add_argument(
-            "--num_layers",
+            "--num-layers",
             type=int,
             default=1,
-            help="Number of LSTM units in each layer. Default: 1",
+            help="Number of LSTM units in each layer. Default: %(default)s",
         )
         return parser

@@ -45,20 +45,13 @@ def F1(cm):
     return (2 * cm["tp"]) / (2 * cm["tp"] + cm["fp"] + cm["fn"])
 
 
-def LOSS(output, target, pos_weight):
-    if pos_weight == "calc":
-        ones = (target == 1).float().sum()
-        zeros = len(target) - ones
-        pos_weight = [(zeros + SMOOTH) / (ones + SMOOTH)]
-    pos_weight = torch.Tensor(pos_weight).type(target[0].type())
-    return binary_cross_entropy_with_logits(output, target, pos_weight=pos_weight)
-
-
-def batch_loss(outputs, targets, lengths, pos_weight=[1], reduction="mean"):
+def batch_loss(outputs, targets, lengths, loss_func, reduction="mean", **kwargs):
     batch_size = len(lengths)
     loss = 0.0
     for i in range(batch_size):
-        loss += LOSS(outputs[i, : lengths[i]], targets[i, : lengths[i]], pos_weight)
+        loss += loss_func(
+            outputs[i, : lengths[i]], targets[i, : lengths[i]], batch_idx=i, **kwargs
+        )
     if reduction == "mean":
         loss /= batch_size
     return loss
