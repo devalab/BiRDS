@@ -7,18 +7,23 @@ from torch.utils.data import DataLoader, SubsetRandomSampler
 
 from datasets import Chen, Kalasanty, collate_fn
 from metrics import batch_loss, batch_metrics
-from models import CGenerator, Detector
+from models import BiLSTM, CGenerator, Detector, ResNet
 
 SMOOTH = 1e-6
 
 
 class Net(pl.LightningModule):
-    def __init__(self, hparams, model_class):
+    def __init__(self, hparams):
         super().__init__()
         self.hparams = hparams
         self.train_ds = Kalasanty(precompute_class_weights=True, fixed_length=False)
         if hparams.testing:
             self.test_ds = Chen()
+
+        if hparams.embedding_model == "bilstm":
+            model_class = BiLSTM
+        else:
+            model_class = ResNet
         self.embedding_model = model_class(self.train_ds.feat_vec_len, hparams)
         dummy = torch.ones((1, self.train_ds.feat_vec_len, 100))
         self.embedding_dim = self.embedding_model(dummy, dummy.shape[2]).shape[1]
@@ -93,27 +98,27 @@ class Net(pl.LightningModule):
         optimizer.step()
         optimizer.zero_grad()
 
-    def focal_loss(self, y_pred, y_true, gamma=2.0, alpha=0.25, **kwargs):
-        y_pred = torch.sigmoid(y_pred)
-        pos = torch.where(torch.eq(y_true, 1), y_pred, torch.ones_like(y_pred))
-        neg = torch.where(torch.eq(y_true, 0), y_pred, torch.zeros_like(y_pred))
-
-        pos = torch.clamp(pos, SMOOTH, 1.0 - SMOOTH)
-        neg = torch.clamp(neg, SMOOTH, 1.0 - SMOOTH)
-
-        loss = -(alpha * torch.pow(1.0 - pos, gamma) * torch.log(pos)) - (
-            (1.0 - alpha) * torch.pow(neg, gamma) * torch.log(1.0 - neg)
-        )
-        return self.reduction(loss)
-
-    def weighted_loss(self, output, target, **kwargs):
+    def focal_loss(self, y_pred, y_true, gamma=2.0, **kwargs):
         if self.training:
             pos_weight = self.train_ds.pos_weight
         else:
             pos_weight = [1]
-        pos_weight = torch.Tensor(pos_weight).type(target[0].type())
+        pos_weight = torch.Tensor(pos_weight).type(y_true[0].type())
+        y_pred = torch.clamp(torch.sigmoid(y_pred), SMOOTH, 1.0 - SMOOTH)
+
+        loss = -(
+            pos_weight * y_true * torch.pow(1.0 - y_pred, gamma) * torch.log(y_pred)
+        ) - ((1 - y_true) * torch.pow(y_pred, gamma) * torch.log(1.0 - y_pred))
+        return self.reduction(loss)
+
+    def weighted_loss(self, y_pred, y_true, **kwargs):
+        if self.training:
+            pos_weight = self.train_ds.pos_weight
+        else:
+            pos_weight = [1]
+        pos_weight = torch.Tensor(pos_weight).type(y_true[0].type())
         return binary_cross_entropy_with_logits(
-            output, target, pos_weight=pos_weight, reduction=self.hparams.reduction
+            y_pred, y_true, pos_weight=pos_weight, reduction=self.hparams.reduction
         )
 
     def training_step(self, batch, batch_idx):
@@ -150,6 +155,26 @@ class Net(pl.LightningModule):
     @staticmethod
     def add_model_specific_args(parser):
         parser = Detector.add_model_specific_args(parser)
+        parser.add_argument(
+            "--embedding-model",
+            default="resnet",
+            type=str,
+            choices=["resnet", "bilstm"],
+            help="Model to be used for generating embeddings. Default: %(default)s",
+        )
+        parser.add_argument(
+            "--net-lr",
+            default=0.01,
+            type=float,
+            help="Main Net Learning Rate. Default: %(default)f",
+        )
+        parser.add_argument(
+            "--reduction",
+            default="mean",
+            type=str,
+            choices=["mean", "sum"],
+            help="The type of reduction to use in the loss function. Default: %(default)s",
+        )
         parser.add_argument(
             "--dropout",
             type=float,
@@ -222,18 +247,16 @@ class CGAN(pl.LightningModule):
             )
         return [opt_g, opt_d]
 
-    def margin_loss(self, yp, yt, batch_idx):
-        yp = torch.sigmoid(yp)
-        yp = torch.masked_select(yp, self.mask[batch_idx])
-        yp = torch.clamp(yp, SMOOTH, 1.0 - SMOOTH)
-        loss = -(yp * torch.log(yp)) - ((1 - yp) * torch.log(1 - yp))
+    def margin_loss(self, y_pred, y_true):
+        y_pred = torch.clamp(torch.sigmoid(y_pred), SMOOTH, 1.0 - SMOOTH)
+        loss = (1 - y_true) * (
+            -(y_pred * torch.log(y_pred)) - ((1 - y_pred) * torch.log(1 - y_pred))
+        )
         return self.net.reduction(loss)
 
-    def g_pos_loss(self, yp, yt, batch_idx):
-        yp = torch.sigmoid(yp)
-        yp = torch.masked_select(yp, self.mask[batch_idx])
-        yp = torch.clamp(yp, SMOOTH, 1.0 - SMOOTH)
-        loss = -torch.log(yp)
+    def g_pos_loss(self, y_pred, y_true):
+        y_pred = torch.clamp(torch.sigmoid(y_pred), SMOOTH, 1.0 - SMOOTH)
+        loss = (1 - y_true) * (-torch.log(y_pred))
         return self.net.reduction(loss)
 
     def g_mse_loss(self, generated_embed, embed, batch_idx):
@@ -258,7 +281,7 @@ class CGAN(pl.LightningModule):
             g_mse_loss = batch_loss(
                 generated_embed, self.embed, lengths, self.g_mse_loss
             )
-            g_loss = 0.05 * g_pos_loss + g_mse_loss
+            g_loss = self.hparams.generator_lambda * g_pos_loss + g_mse_loss
             tqdm_dict = {"g_loss": g_loss}
             log_dict = {
                 "g_pos_loss": g_pos_loss,
@@ -276,7 +299,7 @@ class CGAN(pl.LightningModule):
             y_fake_pred = self.net.detector(generated_embed)
             net_loss = batch_loss(y_pred, y, lengths, self.net.loss_func)
             mar_loss = batch_loss(y_fake_pred, y, lengths, self.margin_loss)
-            d_loss = net_loss + 0.05 * mar_loss
+            d_loss = net_loss + self.hparams.detector_lambda * mar_loss
             tqdm_dict = {"d_loss": d_loss}
             log_dict = {"net_loss": net_loss, "mar_loss": mar_loss, "d_loss": d_loss}
             return OrderedDict(
@@ -326,5 +349,11 @@ class CGAN(pl.LightningModule):
             choices=["Adam", "SGD"],
             type=str,
             help="Optimizer to be used by detector",
+        )
+        parser.add_argument(
+            "--generator-lambda", default=1.0, type=float, help="Default: %(default)f"
+        )
+        parser.add_argument(
+            "--detector-lambda", type=float, default=1.0, help="Default: %(default)f"
         )
         return parser

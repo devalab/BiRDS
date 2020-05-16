@@ -6,7 +6,7 @@ from pytorch_lightning import Trainer
 from pytorch_lightning.callbacks import ModelCheckpoint
 from pytorch_lightning.loggers import TestTubeLogger
 
-from models import BiLSTM, ResNet
+from models import BiLSTM, ResNet  # noqa: F401
 from net import CGAN, Net
 
 
@@ -46,15 +46,10 @@ def main(hparams):
         # overfit_pct=0.05,
     )
 
-    if hparams.embedding_model == "bilstm":
-        model_class = BiLSTM
-    else:
-        model_class = ResNet
-
     if hparams.load_cpkt is None:
-        net = Net(hparams, model_class)
+        net = Net(hparams)
     else:
-        net = Net.load_checkpoint(hparams.load_cpkt, model_class=model_class)
+        net = Net.load_from_checkpoint(hparams.load_cpkt)
 
     trainer.fit(net)
 
@@ -81,6 +76,13 @@ if __name__ == "__main__":
         "--gpus", default=1, type=int, help="Default: %(default)d"
     )
     trainer_group.add_argument(
+        "--batch-size",
+        metavar="SIZE",
+        default=32,
+        type=int,
+        help="Default: %(default)d",
+    )
+    trainer_group.add_argument(
         "--max-epochs",
         metavar="EPOCHS",
         default=30,
@@ -101,46 +103,19 @@ if __name__ == "__main__":
     trainer_group.add_argument(
         "--cgan", dest="cgan", action="store_true", help="Default: %(default)s"
     )
-    trainer_group.add_argument("--no-cgan", dest="cgan", action="store_false")
-    trainer_group.set_defaults(cgan=True)
-
-    # Lightning Module Args
-    net_group = parser.add_argument_group("Net")
-    net_group.add_argument(
+    trainer_group.add_argument(
         "--load-cpkt",
         metavar="PATH",
         default=None,
         type=str,
         help="Load model from file path provided",
     )
-    net_group.add_argument(
-        "--batch-size",
-        metavar="SIZE",
-        default=32,
-        type=int,
-        help="Default: %(default)d",
-    )
-    net_group.add_argument(
-        "--net-lr",
-        default=0.01,
-        type=float,
-        help="Main Net Learning Rate. Default: %(default)f",
-    )
-    net_group.add_argument(
-        "--reduction",
-        default="mean",
-        type=str,
-        choices=["mean", "sum"],
-        help="The type of reduction to use in the loss function. Default: %(default)s",
-    )
+    trainer_group.add_argument("--no-cgan", dest="cgan", action="store_false")
+    trainer_group.set_defaults(cgan=True)
+
+    # Lightning Module Args
+    net_group = parser.add_argument_group("Net")
     net_group = Net.add_model_specific_args(net_group)
-    net_group.add_argument(
-        "--embedding-model",
-        default="resnet",
-        type=str,
-        choices=["resnet", "bilstm"],
-        help="Model to be used for generating embeddings. Default: %(default)s",
-    )
 
     # ResNet Args
     resnet_group = parser.add_argument_group("ResNet")

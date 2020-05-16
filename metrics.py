@@ -1,18 +1,17 @@
 from collections import OrderedDict
 
 import torch
-from torch.nn.functional import binary_cross_entropy_with_logits
 
 SMOOTH = 1e-6
 
 
-def CM(output, target):
+def CM(y_pred, y_true):
     # Get Confusion Matrix
     cm = {}
-    cm["tp"] = (target * output).sum().float() + SMOOTH
-    cm["tn"] = (~target * ~output).sum().float() + SMOOTH
-    cm["fp"] = (~target * output).sum().float() + SMOOTH
-    cm["fn"] = (target * ~output).sum().float() + SMOOTH
+    cm["tp"] = (y_true * y_pred).sum().float() + SMOOTH
+    cm["tn"] = (~y_true * ~y_pred).sum().float() + SMOOTH
+    cm["fp"] = (~y_true * y_pred).sum().float() + SMOOTH
+    cm["fn"] = (y_true * ~y_pred).sum().float() + SMOOTH
     return cm
 
 
@@ -45,24 +44,24 @@ def F1(cm):
     return (2 * cm["tp"]) / (2 * cm["tp"] + cm["fp"] + cm["fn"])
 
 
-def batch_loss(outputs, targets, lengths, loss_func, reduction="mean", **kwargs):
+def batch_loss(y_preds, y_trues, lengths, loss_func, reduction="mean", **kwargs):
     batch_size = len(lengths)
     loss = 0.0
     for i in range(batch_size):
         loss += loss_func(
-            outputs[i, : lengths[i]], targets[i, : lengths[i]], batch_idx=i, **kwargs
+            y_preds[i, : lengths[i]], y_trues[i, : lengths[i]], batch_idx=i, **kwargs
         )
     if reduction == "mean":
         loss /= batch_size
     return loss
 
 
-def batch_metrics(outputs, targets, lengths, reduction="mean"):
+def batch_metrics(y_preds, y_trues, lengths, reduction="mean"):
     batch_size = len(lengths)
     for i in range(batch_size):
-        output = (torch.sigmoid(outputs[i, : lengths[i]]) > 0.5).bool()
-        target = targets[i, : lengths[i]].bool()
-        cm = CM(output, target)
+        y_pred = (torch.sigmoid(y_preds[i, : lengths[i]]) > 0.5).bool()
+        y_true = y_trues[i, : lengths[i]].bool()
+        cm = CM(y_pred, y_true)
         metrics = OrderedDict(
             {
                 "mcc": MCC(cm),

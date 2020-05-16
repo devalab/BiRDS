@@ -160,13 +160,29 @@ AA_sel_feats = get_amino_acid_properties(
 
 
 # %%
+# Interpolation
+import torch
+
+fixed_size = 40
+
+
+def get_dm_interpolation(dm):
+    dm = torch.from_numpy(dm).unsqueeze(0).unsqueeze(0)
+    feature = torch.nn.functional.interpolate(
+        dm, size=(dm.shape[2], fixed_size), mode="bilinear"
+    )
+    feature = feature.squeeze().numpy().T
+    return feature
+
+
+# %%
 # Now, let us preprocess the files again to generate the features directly that can be imported into pytorch easily
 # For that we can define the generate_input function which can be used to generate various types of inputs
 import numpy as np  # noqa: F811
 
 
 # Without using distance map
-feat_vec_len = 21 + 1 + 20 + 3 + 1
+feat_vec_len = 21 + 1 + 21 + 3 + 1 + fixed_size
 
 
 def generate_input(sample, pdb_id_struct, chain_id):
@@ -182,16 +198,19 @@ def generate_input(sample, pdb_id_struct, chain_id):
     X[21] = np.arange(1, seq_len + 1, dtype=np.float32) / seq_len
 
     # PSSM
-    # X[22:43] = get_feature(pdb_id_struct, chain_id, seq_len, "pssm")
+    X[22:43] = get_feature(pdb_id_struct, chain_id, seq_len, "pssm")
 
     # Amino acid probabilities
-    X[22:42] = get_feature(pdb_id_struct, chain_id, seq_len, "aap")
+    # X[22:42] = get_feature(pdb_id_struct, chain_id, seq_len, "aap")
 
     # Secondary structure
-    X[42:45] = get_feature(pdb_id_struct, chain_id, seq_len, "ss2")
+    X[43:46] = get_feature(pdb_id_struct, chain_id, seq_len, "ss2")
 
     # Solvent accessibility
-    X[45] = get_feature(pdb_id_struct, chain_id, seq_len, "solv")
+    X[46] = get_feature(pdb_id_struct, chain_id, seq_len, "solv")
+
+    # Distance map
+    X[47:] = get_dm_interpolation(sample["dist_map_true"])
 
     return X
 
@@ -268,13 +287,12 @@ for pdb_id_struct in tqdm(sorted(os.listdir(preprocessed_dir))):
 
     if os.path.exists(features_file):
         continue
-    print(pdb_id_struct)
 
-    for file in tqdm(sorted(os.listdir(pre))):
+    for file in sorted(os.listdir(pre)):
         chain_id = file[-len(".npz") - 1 : -len(".npz")]
         sample = np.load(os.path.join(pre, file))
         if flg:
-            X = generate_input(sample)
+            X = generate_input(sample, pdb_id_struct, chain_id)
             flg = False
         else:
             # Using concatenation strategy
@@ -291,15 +309,10 @@ for pdb_id_struct in tqdm(sorted(os.listdir(preprocessed_dir))):
 
 #     if os.path.exists(labels_file):
 #         continue
-#     print(pdb_id_struct)
 
-#     for file in tqdm(sorted(os.listdir(pre))):
+#     for file in sorted(os.listdir(pre)):
 #         chain_id = file[-len(".npz") - 1 : -len(".npz")]
 #         sample = np.load(os.path.join(pre, file))
-#         sample = {
-#             key: sample[key].item() if sample[key].shape == () else sample[key]
-#             for key in sample
-#         }
 #         if flg:
 #             y = sample["labels"]
 #             flg = False
@@ -312,39 +325,28 @@ for pdb_id_struct in tqdm(sorted(os.listdir(preprocessed_dir))):
 # SAVING ALL CHAINS AS DIFFERENT PROTEINS
 # for pdb_id_struct in tqdm(sorted(os.listdir(preprocessed_dir))):
 #     pre = os.path.join(preprocessed_dir, pdb_id_struct)
-#     for file in tqdm(sorted(os.listdir(pre))):
+#     for file in sorted(os.listdir(pre)):
 #         if not file.endswith(".npz"):
 #             continue
 #         chain_id = file[-len(".npz") - 1 : -len(".npz")]
 #         features_file = os.path.join(pre, "features_" + chain_id + ".npy")
 #         if os.path.exists(features_file):
 #             continue
-#         print(pdb_id_struct, chain_id)
 #         sample = np.load(os.path.join(pre, file))
-#         sample = {
-#             key: sample[key].item() if sample[key].shape is () else sample[key]
-#             for key in sample
-#         }
-#         sample["pssm"] = get_pssm(pdb_id_struct, chain_id, sample["length"])
-#         X = generate_input(sample)
+#         X = generate_input(sample, pdb_id_struct, chain_id)
 #         np.save(features_file, X)
 
 
 # for pdb_id_struct in tqdm(sorted(os.listdir(preprocessed_dir))):
 #     pre = os.path.join(preprocessed_dir, pdb_id_struct)
-#     for file in tqdm(sorted(os.listdir(pre))):
+#     for file in sorted(os.listdir(pre)):
 #         if not file.endswith(".npz"):
 #             continue
 #         chain_id = file[-len(".npz") - 1 : -len(".npz")]
 #         labels_file = os.path.join(pre, "labels_" + chain_id + ".npy")
 #         if os.path.exists(labels_file):
 #             continue
-#         print(pdb_id_struct, chain_id)
 #         sample = np.load(os.path.join(pre, file))
-#         sample = {
-#             key: sample[key].item() if sample[key].shape is () else sample[key]
-#             for key in sample
-#         }
 #         y = sample["labels"]
 #         np.save(labels_file, y)
 
