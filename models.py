@@ -199,7 +199,7 @@ class CGenerator(torch.nn.Module):
         layers = []
         for unit in hparams.generator_units:
             layers.append(torch.nn.Linear(input_size, unit))
-            layers.append(torch.nn.ReLU())
+            layers.append(torch.nn.LeakyReLU(0.2, True))
             layers.append(torch.nn.Dropout(hparams.dropout))
             input_size = unit
         self.generator = torch.nn.Sequential(
@@ -229,7 +229,7 @@ class Detector(torch.nn.Module):
         layers = []
         for unit in hparams.detector_units:
             layers.append(torch.nn.Linear(input_size, unit))
-            layers.append(torch.nn.ReLU())
+            layers.append(torch.nn.LeakyReLU(0.2, True))
             layers.append(torch.nn.Dropout(hparams.dropout))
             input_size = unit
         self.detector = torch.nn.Sequential(*layers, torch.nn.Linear(input_size, 1))

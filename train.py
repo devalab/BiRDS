@@ -7,7 +7,7 @@ from pytorch_lightning.callbacks import ModelCheckpoint
 from pytorch_lightning.loggers import TestTubeLogger
 
 from models import BiLSTM, ResNet  # noqa: F401
-from net import CGAN, Net
+from net import CGAN, Net, NetDict
 
 
 class MyModelCheckpoint(ModelCheckpoint):
@@ -42,14 +42,21 @@ def main(hparams):
         profiler=True,
         accumulate_grad_batches=accumulate_grad_batches,
         gradient_clip_val=gradient_clip_val,
+        # track_grad_norm=2,
         # fast_dev_run=True,
         # overfit_pct=0.05,
     )
 
-    if hparams.load_cpkt is None:
-        net = Net(hparams)
+    if hparams.load_from_checkpoint is None:
+        if hparams.use_dist_map or hparams.use_pl_dist:
+            net = NetDict(hparams)
+        else:
+            net = Net(hparams)
     else:
-        net = Net.load_from_checkpoint(hparams.load_cpkt)
+        if hparams.use_dist_map or hparams.use_pl_dist:
+            net = NetDict.load_from_checkpoint(hparams.load_from_checkpoint)
+        else:
+            net = Net.load_from_checkpoint(hparams.load_from_checkpoint)
 
     trainer.fit(net)
 
@@ -85,7 +92,7 @@ if __name__ == "__main__":
     trainer_group.add_argument(
         "--max-epochs",
         metavar="EPOCHS",
-        default=30,
+        default=100,
         type=int,
         help="Main Net epochs. Default: %(default)d",
     )
@@ -104,11 +111,18 @@ if __name__ == "__main__":
         "--cgan", dest="cgan", action="store_true", help="Default: %(default)s"
     )
     trainer_group.add_argument(
-        "--load-cpkt",
+        "--load-from-checkpoint",
         metavar="PATH",
         default=None,
         type=str,
         help="Load model from file path provided",
+    )
+    trainer_group.add_argument(
+        "--resume-from-checkpoint",
+        metavar="PATH",
+        default=None,
+        type=str,
+        help="Resume trainer from the specified checkpoint provided",
     )
     trainer_group.add_argument("--no-cgan", dest="cgan", action="store_false")
     trainer_group.set_defaults(cgan=True)
@@ -116,6 +130,7 @@ if __name__ == "__main__":
     # Lightning Module Args
     net_group = parser.add_argument_group("Net")
     net_group = Net.add_model_specific_args(net_group)
+    net_group = NetDict.add_model_specific_args(net_group)
 
     # ResNet Args
     resnet_group = parser.add_argument_group("ResNet")

@@ -21,15 +21,15 @@ def collate_fn(samples):
     X = torch.zeros(batch_size, feat_vec_len, max_len)
     y = torch.zeros(batch_size, max_len)
     if max_len == len(samples[0][1]):
-        for i, sample in enumerate(samples):
-            lengths[i] = len(sample[1])
-            X[i, :, : lengths[i]] = sample[0]
-            y[i, : lengths[i]] = sample[1]
+        for i, (tX, ty) in enumerate(samples):
+            lengths[i] = len(ty)
+            X[i, :, : lengths[i]] = tX
+            y[i, : lengths[i]] = ty
     else:
-        for i, sample in enumerate(samples):
-            lengths[i] = len(sample[1])
-            X[i] = sample[0]
-            y[i, : lengths[i]] = sample[1]
+        for i, (tX, ty) in enumerate(samples):
+            lengths[i] = len(ty)
+            X[i] = tX
+            y[i, : lengths[i]] = ty
     return X, y, lengths
 
 
@@ -64,7 +64,9 @@ class Chen(Dataset):
 
 
 class Kalasanty(Dataset):
-    def __init__(self, precompute_class_weights=False, fixed_length=False):
+    def __init__(
+        self, precompute_class_weights=False, fixed_length=False, get_input_size=True
+    ):
         super().__init__()
         self.data_dir = os.path.abspath("./data/scPDB")
         self.splits_dir = os.path.join(self.data_dir, "splits")
@@ -83,7 +85,8 @@ class Kalasanty(Dataset):
             # self.pos_weight = self.compute_class_weights()
             self.pos_weight = [6505272 / 475452]
         self.train_indices, self.valid_indices = self.custom_cv()
-        self.feat_vec_len = self[0][0].shape[0]
+        if get_input_size:
+            self.feat_vec_len = self[0][0].shape[0]
 
     def get_mapping(self):
         # There are multiple structures for a particular pdb_id, taking the first one
@@ -200,4 +203,73 @@ class KalasantyChains(Kalasanty):
                 )
             )
         )
+        return X, y
+
+
+def collate_fn_dict(samples):
+    # samples is a list of (X, y) of size MINIBATCH_SIZE
+    # Sort the samples in decreasing order of their length
+    # x[1] will be y of each sample
+    samples.sort(key=lambda x: len(x[1]["y"]), reverse=True)
+    batch_size = len(samples)
+
+    lengths = [0] * batch_size
+    for i, (tX, ty) in enumerate(samples):
+        lengths[i] = len(ty["y"])
+
+    X = {}
+    for key in samples[0][0].keys():
+        feat_vec_len, max_len = samples[0][0][key].shape
+        X[key] = torch.zeros(batch_size, feat_vec_len, max_len)
+        for i, (tX, ty) in enumerate(samples):
+            X[key][i, :, : lengths[i]] = tX[key]
+
+    y = {}
+    for key in samples[0][1].keys():
+        max_len = samples[0][1][key].shape[0]
+        y[key] = torch.zeros(batch_size, max_len)
+        for i, (tX, ty) in enumerate(samples):
+            y[key][i, : lengths[i]] = ty[key]
+    return X, y, lengths
+
+
+class KalasantyDict(Kalasanty):
+    def __init__(
+        self,
+        precompute_class_weights=False,
+        fixed_length=False,
+        use_dist_map=False,
+        use_pl_dist=False,
+    ):
+        self.use_dist_map = use_dist_map
+        self.use_pl_dist = use_pl_dist
+        super().__init__(
+            precompute_class_weights=precompute_class_weights,
+            fixed_length=fixed_length,
+            get_input_size=False,
+        )
+        self.feat_vec_len = self[0][0]["X"].shape[0]
+
+    def __getitem__(self, index):
+        pdb_id_struct = self.dataset_list[index]
+        X = {}
+        y = {}
+        X["X"] = torch.from_numpy(
+            np.load(os.path.join(self.preprocessed_dir, pdb_id_struct, "features.npy"))
+        )
+        if self.use_dist_map:
+            X["dist_map"] = torch.from_numpy(
+                np.load(
+                    os.path.join(self.preprocessed_dir, pdb_id_struct, "dist_map.npy")
+                )
+            )
+        y["y"] = torch.from_numpy(
+            np.load(os.path.join(self.preprocessed_dir, pdb_id_struct, "labels.npy"))
+        )
+        if self.use_pl_dist:
+            y["pl_dist"] = torch.from_numpy(
+                np.load(
+                    os.path.join(self.preprocessed_dir, pdb_id_struct, "pl_dist.npy")
+                )
+            )
         return X, y

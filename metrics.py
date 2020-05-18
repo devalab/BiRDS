@@ -49,7 +49,11 @@ def batch_loss(y_preds, y_trues, lengths, loss_func, reduction="mean", **kwargs)
     loss = 0.0
     for i in range(batch_size):
         loss += loss_func(
-            y_preds[i, : lengths[i]], y_trues[i, : lengths[i]], batch_idx=i, **kwargs
+            y_preds[i, : lengths[i]],
+            y_trues[i, : lengths[i]],
+            batch_idx=i,
+            lengths=lengths,
+            **kwargs
         )
     if reduction == "mean":
         loss /= batch_size

@@ -3,9 +3,9 @@ from collections import OrderedDict
 import pytorch_lightning as pl
 import torch
 from torch.nn.functional import binary_cross_entropy_with_logits, mse_loss
-from torch.utils.data import DataLoader, SubsetRandomSampler
+from torch.utils.data import DataLoader, Subset, SubsetRandomSampler
 
-from datasets import Chen, Kalasanty, collate_fn
+from datasets import Chen, Kalasanty, KalasantyDict, collate_fn, collate_fn_dict
 from metrics import batch_loss, batch_metrics
 from models import BiLSTM, CGenerator, Detector, ResNet
 
@@ -17,14 +17,15 @@ class Net(pl.LightningModule):
         super().__init__()
         self.hparams = hparams
         self.train_ds = Kalasanty(precompute_class_weights=True, fixed_length=False)
+        self.collate_fn = collate_fn
         if hparams.testing:
             self.test_ds = Chen()
 
         if hparams.embedding_model == "bilstm":
-            model_class = BiLSTM
+            self.model_class = BiLSTM
         else:
-            model_class = ResNet
-        self.embedding_model = model_class(self.train_ds.feat_vec_len, hparams)
+            self.model_class = ResNet
+        self.embedding_model = self.model_class(self.train_ds.feat_vec_len, hparams)
         dummy = torch.ones((1, self.train_ds.feat_vec_len, 100))
         self.embedding_dim = self.embedding_model(dummy, dummy.shape[2]).shape[1]
 
@@ -48,30 +49,42 @@ class Net(pl.LightningModule):
 
         return output
 
+    def on_after_backward(self):
+        # example to inspect gradient information in tensorboard
+        if self.trainer.global_step % 200 == 0:  # don't make the tf file huge
+            params = self.state_dict()
+            for k, v in params.items():
+                grads = v
+                name = k
+                self.logger.experiment.add_histogram(
+                    tag=name, values=grads, global_step=self.trainer.global_step
+                )
+
     def train_dataloader(self):
         return DataLoader(
-            self.train_ds,
+            Subset(self.train_ds, self.train_ds.train_indices[0]),
             batch_size=self.hparams.batch_size,
-            sampler=SubsetRandomSampler(self.train_ds.train_indices[0]),
-            collate_fn=collate_fn,
+            collate_fn=self.collate_fn,
             num_workers=10,
+            shuffle=True,
         )
 
     def val_dataloader(self):
         return DataLoader(
-            self.train_ds,
+            Subset(self.train_ds, self.train_ds.valid_indices[0]),
             batch_size=self.hparams.batch_size,
-            sampler=SubsetRandomSampler(self.train_ds.valid_indices[0]),
-            collate_fn=collate_fn,
+            collate_fn=self.collate_fn,
             num_workers=10,
+            shuffle=False,
         )
 
     def test_dataloader(self):
         return DataLoader(
             self.test_ds,
             batch_size=self.hparams.batch_size,
-            collate_fn=collate_fn,
+            collate_fn=self.collate_fn,
             num_workers=10,
+            shuffle=False,
         )
 
     def configure_optimizers(self):
@@ -185,6 +198,96 @@ class Net(pl.LightningModule):
         return parser
 
 
+class NetDict(Net):
+    def __init__(self, hparams):
+        super().__init__(hparams)
+        self.train_ds = KalasantyDict(
+            precompute_class_weights=True,
+            fixed_length=False,
+            use_dist_map=hparams.use_dist_map,
+            use_pl_dist=hparams.use_pl_dist,
+        )
+        self.collate_fn = collate_fn_dict
+        if hparams.use_dist_map:
+            self.dist_map_model = self.model_class(512, hparams)
+            self.detector = Detector(2 * self.embedding_dim, hparams)
+        if hparams.use_pl_dist:
+            self.loss_func = self.pl_weighted_loss
+
+    def forward(self, X, lengths):
+        # [Batch, hidden_sizes[-1], Max_length]
+        output = self.embedding_model(X["X"], lengths)
+        if self.hparams.use_dist_map:
+            out2 = self.dist_map_model(X["dist_map"], lengths)
+            output = torch.cat((output, out2), 1)
+            # [Batch, 2 * hidden_sizes[-1], Max_length] -> [Batch, Max_length]
+
+        # [Batch, hidden_sizes[-1], Max_length] -> [Batch, Max_length]
+        output = output.transpose(1, 2)
+        output = self.detector(output)
+
+        return output
+
+    def pl_weighted_loss(
+        self, y_pred, y_true, batch_idx, lengths, pl_dist=None, **kwargs
+    ):
+        y_pred = torch.clamp(torch.sigmoid(y_pred), SMOOTH, 1.0 - SMOOTH)
+        if self.training:
+            assert pl_dist is not None
+            tmp = pl_dist[batch_idx, : lengths[batch_idx]]
+            # if lengths[batch_idx] < 75:
+            #     print(tmp)
+            #     print(y_true)
+            #     exit(1)
+            loss = -(15 * y_true * torch.log(y_pred)) - (
+                (1 - y_true) * torch.log(1.0 - y_pred) * (tmp / 10.0)
+            )
+        else:
+            loss = -(y_true * torch.log(y_pred)) - (
+                (1 - y_true) * torch.log(1.0 - y_pred)
+            )
+        return self.reduction(loss)
+
+    def training_step(self, batch, batch_idx):
+        X, y, lengths = batch
+        y_pred = self(X, lengths)
+        if self.hparams.use_pl_dist:
+            loss = batch_loss(
+                y_pred, y["y"], lengths, self.loss_func, pl_dist=y["pl_dist"]
+            )
+        else:
+            loss = batch_loss(y_pred, y["y"], lengths, self.loss_func)
+        return {"loss": loss, "log": {"loss": loss}}
+
+    def val_test_step(self, batch, batch_idx, prefix):
+        X, y, lengths = batch
+        y_pred = self(X, lengths)
+        metrics = OrderedDict(
+            {prefix + "loss": batch_loss(y_pred, y["y"], lengths, self.loss_func)}
+        )
+        for key, val in batch_metrics(y_pred, y["y"], lengths).items():
+            metrics[prefix + key] = val
+        return metrics
+
+    @staticmethod
+    def add_model_specific_args(parser):
+        parser.add_argument(
+            "--use-dist-map",
+            dest="use_dist_map",
+            action="store_true",
+            help="Default: %(default)s",
+        )
+        parser.set_defaults(use_dist_map=False)
+        parser.add_argument(
+            "--use-pl-dist",
+            dest="use_pl_dist",
+            action="store_true",
+            help="Default: %(default)s",
+        )
+        parser.set_defaults(use_pl_dist=False)
+        return parser
+
+
 class CGAN(pl.LightningModule):
     def __init__(self, hparams, net):
         super().__init__()
@@ -247,19 +350,19 @@ class CGAN(pl.LightningModule):
             )
         return [opt_g, opt_d]
 
-    def margin_loss(self, y_pred, y_true):
+    def margin_loss(self, y_pred, y_true, **kwargs):
         y_pred = torch.clamp(torch.sigmoid(y_pred), SMOOTH, 1.0 - SMOOTH)
         loss = (1 - y_true) * (
             -(y_pred * torch.log(y_pred)) - ((1 - y_pred) * torch.log(1 - y_pred))
         )
         return self.net.reduction(loss)
 
-    def g_pos_loss(self, y_pred, y_true):
+    def g_pos_loss(self, y_pred, y_true, **kwargs):
         y_pred = torch.clamp(torch.sigmoid(y_pred), SMOOTH, 1.0 - SMOOTH)
         loss = (1 - y_true) * (-torch.log(y_pred))
         return self.net.reduction(loss)
 
-    def g_mse_loss(self, generated_embed, embed, batch_idx):
+    def g_mse_loss(self, generated_embed, embed, batch_idx, **kwargs):
         embed = torch.masked_select(embed, self.mask[batch_idx].unsqueeze(1))
         generated_embed = torch.masked_select(
             generated_embed, self.mask[batch_idx].unsqueeze(1)
@@ -278,16 +381,20 @@ class CGAN(pl.LightningModule):
             generated_embed = self.generator(self.embed)
             y_fake_pred = self.net.detector(generated_embed)
             g_pos_loss = batch_loss(y_fake_pred, y, lengths, self.g_pos_loss)
-            g_mse_loss = batch_loss(
-                generated_embed, self.embed, lengths, self.g_mse_loss
-            )
-            g_loss = self.hparams.generator_lambda * g_pos_loss + g_mse_loss
+            if self.hparams.use_mse_loss:
+                g_mse_loss = batch_loss(
+                    generated_embed, self.embed, lengths, self.g_mse_loss
+                )
+                g_loss = g_pos_loss + self.hparams.generator_lambda * g_mse_loss
+                log_dict = {
+                    "g_loss": g_loss,
+                    "g_pos_loss": g_pos_loss,
+                    "g_mse_loss": g_mse_loss,
+                }
+            else:
+                g_loss = g_pos_loss
+                log_dict = {"g_loss": g_loss}
             tqdm_dict = {"g_loss": g_loss}
-            log_dict = {
-                "g_pos_loss": g_pos_loss,
-                "g_mse_loss": g_mse_loss,
-                "g_loss": g_loss,
-            }
             return OrderedDict(
                 {"loss": g_loss, "progress_bar": tqdm_dict, "log": log_dict}
             )
@@ -296,12 +403,20 @@ class CGAN(pl.LightningModule):
         if optimizer_idx == 1:
             y_pred = self.net.detector(self.embed.detach())
             generated_embed = self.generator(self.embed)
-            y_fake_pred = self.net.detector(generated_embed)
             net_loss = batch_loss(y_pred, y, lengths, self.net.loss_func)
-            mar_loss = batch_loss(y_fake_pred, y, lengths, self.margin_loss)
-            d_loss = net_loss + self.hparams.detector_lambda * mar_loss
+            if self.hparams.use_margin_loss:
+                y_fake_pred = self.net.detector(generated_embed)
+                mar_loss = batch_loss(y_fake_pred, y, lengths, self.margin_loss)
+                d_loss = net_loss + self.hparams.detector_lambda * mar_loss
+                log_dict = {
+                    "net_loss": net_loss,
+                    "mar_loss": mar_loss,
+                    "d_loss": d_loss,
+                }
+            else:
+                d_loss = net_loss
+                log_dict = {"d_loss": d_loss}
             tqdm_dict = {"d_loss": d_loss}
-            log_dict = {"net_loss": net_loss, "mar_loss": mar_loss, "d_loss": d_loss}
             return OrderedDict(
                 {"loss": d_loss, "progress_bar": tqdm_dict, "log": log_dict}
             )
@@ -356,4 +471,18 @@ class CGAN(pl.LightningModule):
         parser.add_argument(
             "--detector-lambda", type=float, default=1.0, help="Default: %(default)f"
         )
+        parser.add_argument(
+            "--no-mse-loss",
+            dest="use_mse_loss",
+            action="store_false",
+            help="Default: %(default)s",
+        )
+        parser.set_defaults(use_mse_loss=True)
+        parser.add_argument(
+            "--no-margin-loss",
+            dest="use_margin_loss",
+            action="store_false",
+            help="Default: %(default)s",
+        )
+        parser.set_defaults(use_margin_loss=True)
         return parser
