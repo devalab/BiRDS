@@ -2,11 +2,20 @@ from collections import OrderedDict
 
 import pytorch_lightning as pl
 import torch
-from torch.nn.functional import binary_cross_entropy_with_logits, mse_loss
-from torch.utils.data import DataLoader, Subset, SubsetRandomSampler
+from torch.optim import SGD, Adam
+from torch.optim.lr_scheduler import ReduceLROnPlateau
+from torch.utils.data import DataLoader, Subset
 
 from datasets import Chen, Kalasanty, KalasantyDict, collate_fn, collate_fn_dict
-from metrics import batch_loss, batch_metrics
+from metrics import (
+    batch_loss,
+    batch_metrics,
+    detector_margin_loss,
+    generator_mse_loss,
+    generator_pos_loss,
+    weighted_bce_loss,
+    weighted_focal_loss,
+)
 from models import BiLSTM, CGenerator, Detector, ResNet
 
 SMOOTH = 1e-6
@@ -31,13 +40,9 @@ class Net(pl.LightningModule):
 
         self.detector = Detector(self.embedding_dim, hparams)
         if hparams.loss == "focal":
-            self.loss_func = self.focal_loss
+            self.loss_func = weighted_focal_loss
         else:
-            self.loss_func = self.weighted_loss
-        if hparams.reduction == "sum":
-            self.reduction = torch.sum
-        else:
-            self.reduction = torch.mean
+            self.loss_func = weighted_bce_loss
 
     def forward(self, X, lengths):
         # [Batch, hidden_sizes[-1], Max_length]
@@ -88,9 +93,9 @@ class Net(pl.LightningModule):
         )
 
     def configure_optimizers(self):
-        optimizer = torch.optim.Adam(self.parameters(), lr=self.hparams.net_lr)
+        optimizer = Adam(self.parameters(), lr=self.hparams.net_lr)
         scheduler = {
-            "scheduler": torch.optim.lr_scheduler.ReduceLROnPlateau(
+            "scheduler": ReduceLROnPlateau(
                 optimizer, mode="max", patience=5, verbose=True
             ),
             "monitor": "val_mcc",
@@ -98,46 +103,22 @@ class Net(pl.LightningModule):
         return [optimizer], [scheduler]
 
     # learning rate warm-up
-    def optimizer_step(
-        self, current_epoch, batch_nb, optimizer, optimizer_i, second_order_closure=None
-    ):
+    def optimizer_step(self, curr_epoch, batch_nb, optim, optim_idx, soc=None):
         # warm up lr
         if self.trainer.global_step < 500:
             lr_scale = min(1.0, float(self.trainer.global_step + 1) / 500.0)
-            for pg in optimizer.param_groups:
+            for pg in optim.param_groups:
                 pg["lr"] = lr_scale * self.hparams.net_lr
 
-        # update params
-        optimizer.step()
-        optimizer.zero_grad()
-
-    def focal_loss(self, y_pred, y_true, gamma=2.0, **kwargs):
-        if self.training:
-            pos_weight = self.train_ds.pos_weight
-        else:
-            pos_weight = [1]
-        pos_weight = torch.Tensor(pos_weight).type(y_true[0].type())
-        y_pred = torch.clamp(torch.sigmoid(y_pred), SMOOTH, 1.0 - SMOOTH)
-
-        loss = -(
-            pos_weight * y_true * torch.pow(1.0 - y_pred, gamma) * torch.log(y_pred)
-        ) - ((1 - y_true) * torch.pow(y_pred, gamma) * torch.log(1.0 - y_pred))
-        return self.reduction(loss)
-
-    def weighted_loss(self, y_pred, y_true, **kwargs):
-        if self.training:
-            pos_weight = self.train_ds.pos_weight
-        else:
-            pos_weight = [1]
-        pos_weight = torch.Tensor(pos_weight).type(y_true[0].type())
-        return binary_cross_entropy_with_logits(
-            y_pred, y_true, pos_weight=pos_weight, reduction=self.hparams.reduction
-        )
+        optim.step()
+        optim.zero_grad()
 
     def training_step(self, batch, batch_idx):
         X, y, lengths = batch
         y_pred = self(X, lengths)
-        loss = batch_loss(y_pred, y, lengths, self.loss_func)
+        loss = batch_loss(
+            y_pred, y, lengths, self.loss_func, pos_weight=self.train_ds.pos_weight
+        )
         return {"loss": loss, "log": {"loss": loss}}
 
     def val_test_step(self, batch, batch_idx, prefix):
@@ -180,13 +161,6 @@ class Net(pl.LightningModule):
             default=0.01,
             type=float,
             help="Main Net Learning Rate. Default: %(default)f",
-        )
-        parser.add_argument(
-            "--reduction",
-            default="mean",
-            type=str,
-            choices=["mean", "sum"],
-            help="The type of reduction to use in the loss function. Default: %(default)s",
         )
         parser.add_argument(
             "--dropout",
@@ -246,7 +220,7 @@ class NetDict(Net):
             loss = -(y_true * torch.log(y_pred)) - (
                 (1 - y_true) * torch.log(1.0 - y_pred)
             )
-        return self.reduction(loss)
+        return torch.mean(loss)
 
     def training_step(self, batch, batch_idx):
         X, y, lengths = batch
@@ -293,9 +267,6 @@ class CGAN(pl.LightningModule):
         super().__init__()
         self.hparams = hparams
         self.net = net
-        self.train_ds = net.train_ds
-        if hparams.testing:
-            self.test_ds = net.test_ds
         self.generator = CGenerator(self.net.embedding_dim, hparams)
 
     def forward(self, X, lengths):
@@ -304,86 +275,45 @@ class CGAN(pl.LightningModule):
         # Return the embeddings as [Batch, Max_length, hidden_sizes[-1]]
         return output.transpose(1, 2)
 
+    def on_after_backward(self):
+        return self.net.on_after_backward()
+
     def train_dataloader(self):
-        return DataLoader(
-            self.train_ds,
-            batch_size=self.hparams.batch_size,
-            sampler=SubsetRandomSampler(self.train_ds.train_indices[0]),
-            collate_fn=collate_fn,
-            num_workers=10,
-        )
+        return self.net.train_dataloader()
 
     def val_dataloader(self):
-        return DataLoader(
-            self.train_ds,
-            batch_size=self.hparams.batch_size,
-            sampler=SubsetRandomSampler(self.train_ds.valid_indices[0]),
-            collate_fn=collate_fn,
-            num_workers=10,
-        )
+        return self.net.val_dataloader()
 
     def test_dataloader(self):
-        return DataLoader(
-            self.test_ds,
-            batch_size=self.hparams.batch_size,
-            collate_fn=collate_fn,
-            num_workers=10,
-        )
+        return self.net.test_dataloader()
 
     def configure_optimizers(self):
         if self.hparams.generator_opt == "SGD":
-            opt_g = torch.optim.SGD(
-                self.generator.parameters(), lr=self.hparams.cgan_lr
-            )
+            opt_g = SGD(self.generator.parameters(), lr=self.hparams.cgan_lr)
         else:
-            opt_g = torch.optim.Adam(
-                self.generator.parameters(), lr=self.hparams.cgan_lr
-            )
+            opt_g = Adam(self.generator.parameters(), lr=self.hparams.cgan_lr)
 
         if self.hparams.detector_opt == "SGD":
-            opt_d = torch.optim.SGD(
-                self.net.detector.parameters(), lr=self.hparams.cgan_lr
-            )
+            opt_d = SGD(self.net.detector.parameters(), lr=self.hparams.cgan_lr)
         else:
-            opt_d = torch.optim.Adam(
-                self.net.detector.parameters(), lr=self.hparams.cgan_lr
-            )
+            opt_d = Adam(self.net.detector.parameters(), lr=self.hparams.cgan_lr)
         return [opt_g, opt_d]
-
-    def margin_loss(self, y_pred, y_true, **kwargs):
-        y_pred = torch.clamp(torch.sigmoid(y_pred), SMOOTH, 1.0 - SMOOTH)
-        loss = (1 - y_true) * (
-            -(y_pred * torch.log(y_pred)) - ((1 - y_pred) * torch.log(1 - y_pred))
-        )
-        return self.net.reduction(loss)
-
-    def g_pos_loss(self, y_pred, y_true, **kwargs):
-        y_pred = torch.clamp(torch.sigmoid(y_pred), SMOOTH, 1.0 - SMOOTH)
-        loss = (1 - y_true) * (-torch.log(y_pred))
-        return self.net.reduction(loss)
-
-    def g_mse_loss(self, generated_embed, embed, batch_idx, **kwargs):
-        embed = torch.masked_select(embed, self.mask[batch_idx].unsqueeze(1))
-        generated_embed = torch.masked_select(
-            generated_embed, self.mask[batch_idx].unsqueeze(1)
-        )
-        return mse_loss(generated_embed, embed, reduction=self.hparams.reduction)
 
     def training_step(self, batch, batch_idx, optimizer_idx):
         X, y, lengths = batch
-        self.mask = []
+        mask = []
         for i, yt in enumerate(y):
-            self.mask.append(torch.eq(yt[: lengths[i]], 0))
+            mask.append(torch.eq(yt[: lengths[i]], 0))
 
         # Train Generator
         if optimizer_idx == 0:
             self.embed = self(X, lengths)
             generated_embed = self.generator(self.embed)
             y_fake_pred = self.net.detector(generated_embed)
-            g_pos_loss = batch_loss(y_fake_pred, y, lengths, self.g_pos_loss)
+            g_pos_loss = batch_loss(y_fake_pred, y, lengths, generator_pos_loss)
             if self.hparams.use_mse_loss:
                 g_mse_loss = batch_loss(
-                    generated_embed, self.embed, lengths, self.g_mse_loss
+                    generated_embed, self.embed, lengths, generator_mse_loss, mask=mask
                 )
                 g_loss = g_pos_loss + self.hparams.generator_lambda * g_mse_loss
                 log_dict = {
@@ -403,10 +333,16 @@ class CGAN(pl.LightningModule):
         if optimizer_idx == 1:
             y_pred = self.net.detector(self.embed.detach())
             generated_embed = self.generator(self.embed)
-            net_loss = batch_loss(y_pred, y, lengths, self.net.loss_func)
+            net_loss = batch_loss(
+                y_pred,
+                y,
+                lengths,
+                self.net.loss_func,
+                pos_weight=self.net.train_ds.pos_weight,
+            )
             if self.hparams.use_margin_loss:
                 y_fake_pred = self.net.detector(generated_embed)
-                mar_loss = batch_loss(y_fake_pred, y, lengths, self.margin_loss)
+                mar_loss = batch_loss(y_fake_pred, y, lengths, detector_margin_loss)
                 d_loss = net_loss + self.hparams.detector_lambda * mar_loss
                 log_dict = {
                     "net_loss": net_loss,

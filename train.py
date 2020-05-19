@@ -1,5 +1,5 @@
 import os
-from argparse import ArgumentParser
+from argparse import ArgumentParser, Namespace
 
 import torch
 from pytorch_lightning import Trainer
@@ -26,22 +26,27 @@ def main(hparams):
         monitor="val_mcc", verbose=True, save_top_k=3, mode="max",
     )
     bs = hparams.batch_size
-    row_log_interval = 64 / bs
-    log_save_interval = 256 / bs
     if hparams.progress_bar_refresh_rate is None:
-        hparams.progress_bar_refresh_rate = 64 / bs
-    accumulate_grad_batches = {5: max(1, 16 // bs), 10: 64 // bs}
-    gradient_clip_val = 0
+        hparams.progress_bar_refresh_rate = 64 // bs
+    const_params = {
+        "max_epochs": hparams.net_epochs,
+        "row_log_interval": 64 // bs,
+        "log_save_interval": 256 // bs,
+        "gradient_clip_val": 0,
+    }
+    hparams = Namespace(**vars(hparams), **const_params)
+    if not hparams.resume_from_checkpoint:
+        accumulate_grad_batches = {5: max(1, 16 // bs), 10: 64 // bs}
+    else:
+        accumulate_grad_batches = 1
+    print(hparams)
     trainer = Trainer.from_argparse_args(
         hparams,
         logger=logger,
         checkpoint_callback=checkpoint_callback,
-        row_log_interval=row_log_interval,
-        log_save_interval=log_save_interval,
-        val_check_interval=0.5,
+        # val_check_interval=0.5,
         profiler=True,
         accumulate_grad_batches=accumulate_grad_batches,
-        gradient_clip_val=gradient_clip_val,
         # track_grad_norm=2,
         # fast_dev_run=True,
         # overfit_pct=0.05,
@@ -64,7 +69,7 @@ def main(hparams):
 
     if hparams.cgan:
         cgan = CGAN(hparams, net)
-        trainer.max_epochs = hparams.max_epochs + hparams.cgan_epochs
+        trainer.max_epochs = hparams.net_epochs + hparams.cgan_epochs
         trainer.fit(cgan)
 
     if hparams.testing:
@@ -90,9 +95,9 @@ if __name__ == "__main__":
         help="Default: %(default)d",
     )
     trainer_group.add_argument(
-        "--max-epochs",
+        "--net-epochs",
         metavar="EPOCHS",
-        default=100,
+        default=50,
         type=int,
         help="Main Net epochs. Default: %(default)d",
     )
@@ -146,5 +151,4 @@ if __name__ == "__main__":
 
     # Parse as hyperparameters
     hparams = parser.parse_args()
-    print(hparams)
     main(hparams)
