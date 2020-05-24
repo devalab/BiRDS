@@ -167,7 +167,7 @@ class ResNet(torch.nn.Module):
         return self.resnet_layer(X)
 
     @staticmethod
-    def add_model_specific_args(parser):
+    def add_class_specific_args(parser):
         parser.add_argument(
             "--layers",
             nargs="+",
@@ -211,7 +211,7 @@ class CGenerator(torch.nn.Module):
         return self.generator(X)
 
     @staticmethod
-    def add_model_specific_args(parser):
+    def add_class_specific_args(parser):
         parser.add_argument(
             "--generator-units",
             nargs="+",
@@ -240,7 +240,7 @@ class Detector(torch.nn.Module):
         return self.detector(X).squeeze(dim=2)
 
     @staticmethod
-    def add_model_specific_args(parser):
+    def add_class_specific_args(parser):
         parser.add_argument(
             "--detector-units",
             metavar="UNIT",
@@ -297,7 +297,7 @@ class BiLSTM(torch.nn.Module):
         return output.transpose(0, 1).transpose(1, 2)
 
     @staticmethod
-    def add_model_specific_args(parser):
+    def add_class_specific_args(parser):
         parser.add_argument(
             "--hidden-sizes",
             nargs="+",

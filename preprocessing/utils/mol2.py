@@ -2,9 +2,9 @@ from collections import OrderedDict
 
 import pandas as pd
 
-from preprocessing.utils.NWalign import calcualte_score_gotoh
-from preprocessing.utils.NWalign import code_with_modified_residues as aa3to1
-from preprocessing.utils.NWalign import trace_back_gotoh
+from utils.NWalign import calcualte_score_gotoh
+from utils.NWalign import code_with_modified_residues as aa3to1
+from utils.NWalign import trace_back_gotoh
 
 
 class Mol2:

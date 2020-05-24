@@ -6,8 +6,9 @@ from pytorch_lightning import Trainer
 from pytorch_lightning.callbacks import ModelCheckpoint
 from pytorch_lightning.loggers import TestTubeLogger
 
+from datasets import Kalasanty
 from models import BiLSTM, ResNet  # noqa: F401
-from net import CGAN, Net, NetDict
+from net import CGAN, Net
 
 
 class MyModelCheckpoint(ModelCheckpoint):
@@ -53,26 +54,20 @@ def main(hparams):
     )
 
     if hparams.load_from_checkpoint is None:
-        if hparams.use_dist_map or hparams.use_pl_dist:
-            net = NetDict(hparams)
-        else:
-            net = Net(hparams)
+        net = Net(hparams)
     else:
-        if hparams.use_dist_map or hparams.use_pl_dist:
-            net = NetDict.load_from_checkpoint(hparams.load_from_checkpoint)
-        else:
-            net = Net.load_from_checkpoint(hparams.load_from_checkpoint)
+        net = Net.load_from_checkpoint(hparams.load_from_checkpoint)
 
     trainer.fit(net)
 
     # TODO Load the best model here
 
-    if hparams.cgan:
+    if hparams.use_cgan:
         cgan = CGAN(hparams, net)
         trainer.max_epochs = hparams.net_epochs + hparams.cgan_epochs
         trainer.fit(cgan)
 
-    if hparams.testing:
+    if hparams.run_tests:
         trainer.test()
 
 
@@ -108,13 +103,21 @@ if __name__ == "__main__":
         const=0,
     )
     trainer_group.add_argument(
-        "--testing", dest="testing", action="store_true", help="Default: %(default)s"
+        "--test",
+        dest="run_tests",
+        action="store_true",
+        help="Run tests on model. Default: %(default)s",
     )
-    trainer_group.add_argument("--no-testing", dest="testing", action="store_false")
-    trainer_group.set_defaults(testing=False)
+    trainer_group.add_argument("--no-test", dest="run_tests", action="store_false")
+    trainer_group.set_defaults(run_tests=False)
     trainer_group.add_argument(
-        "--cgan", dest="cgan", action="store_true", help="Default: %(default)s"
+        "--cgan",
+        dest="use_cgan",
+        action="store_true",
+        help="Train a Complementary GAN after main net training. Default: %(default)s",
     )
+    trainer_group.add_argument("--no-cgan", dest="use_cgan", action="store_false")
+    trainer_group.set_defaults(use_cgan=False)
     trainer_group.add_argument(
         "--load-from-checkpoint",
         metavar="PATH",
@@ -129,25 +132,26 @@ if __name__ == "__main__":
         type=str,
         help="Resume trainer from the specified checkpoint provided",
     )
-    trainer_group.add_argument("--no-cgan", dest="cgan", action="store_false")
-    trainer_group.set_defaults(cgan=True)
+
+    # Dataset Args
+    dataset_group = parser.add_argument_group("Dataset")
+    dataset_group = Kalasanty.add_class_specific_args(dataset_group)
 
     # Lightning Module Args
     net_group = parser.add_argument_group("Net")
-    net_group = Net.add_model_specific_args(net_group)
-    net_group = NetDict.add_model_specific_args(net_group)
+    net_group = Net.add_class_specific_args(net_group)
 
     # ResNet Args
     resnet_group = parser.add_argument_group("ResNet")
-    resnet_group = ResNet.add_model_specific_args(resnet_group)
+    resnet_group = ResNet.add_class_specific_args(resnet_group)
 
     # BiLSTM Args
     # bilstm_group = parser.add_argument_group("BiLSTM")
-    # bilstm_group = BiLSTM.add_model_specific_args(bilstm_group)
+    # bilstm_group = BiLSTM.add_class_specific_args(bilstm_group)
 
     # CGAN Arguments
     cgan_group = parser.add_argument_group("CGAN")
-    cgan_group = CGAN.add_model_specific_args(cgan_group)
+    cgan_group = CGAN.add_class_specific_args(cgan_group)
 
     # Parse as hyperparameters
     hparams = parser.parse_args()

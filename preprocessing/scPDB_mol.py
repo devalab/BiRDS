@@ -3,10 +3,8 @@
 # ALWAYS RUN THIS CODE CELL
 import os
 
-data_dir = os.path.abspath("../data/scPDB")
+data_dir = os.path.abspath("../data/2018_scPDB")
 raw_dir = os.path.join(data_dir, "raw")
-pssm_dir = os.path.join(data_dir, "pssm")
-splits_dir = os.path.join(data_dir, "splits")
 preprocessed_dir = os.path.join(data_dir, "preprocessed")
 
 
@@ -26,23 +24,23 @@ preprocessed_dir = os.path.join(data_dir, "preprocessed")
 
 # %%
 # For sequence-based prediction, we need to use RCSB FASTA files
-import urllib.request
+# import urllib.request
 
-for pdb_id_struct in sorted(os.listdir(raw_dir)):
-    pdb_id = pdb_id_struct[:4]
-    print(pdb_id)
+# for pdb_id_struct in sorted(os.listdir(raw_dir)):
+#     pdb_id = pdb_id_struct[:4]
+#     # print(pdb_id)
 
-    fasta_save = os.path.join(raw_dir, pdb_id_struct, "sequence.fasta")
-    if not os.path.exists(fasta_save):
-        try:
-            urllib.request.urlretrieve(
-                "https://www.rcsb.org/pdb/download/downloadFastaFiles.do?structureIdList="
-                + pdb_id
-                + "&compressionType=uncompressed",
-                fasta_save,
-            )
-        except:  # noqa: E722
-            print("Err: fasta " + pdb_id)
+#     fasta_save = os.path.join(raw_dir, pdb_id_struct, "sequence.fasta")
+#     if not os.path.exists(fasta_save):
+#         try:
+#             urllib.request.urlretrieve(
+#                 "https://www.rcsb.org/pdb/download/downloadFastaFiles.do?structureIdList="
+#                 + pdb_id
+#                 + "&compressionType=uncompressed",
+#                 fasta_save,
+#             )
+#         except:  # noqa: E722
+#             print("Err: fasta " + pdb_id)
 
 
 # %%
@@ -67,23 +65,28 @@ for pdb_id_struct in sorted(os.listdir(raw_dir)):
 # Download NWalign.py to use Needlman Wunsch algorithm to align sequences
 # https://zhanglab.ccmb.med.umich.edu/NW-align/NWalign.py (Make small changes for Python3 compatibility)
 # 4egb_5 is an obseleted PDB and hence has chain E, had to manually add E to sequence.fasta
-from preprocessing.utils.mol2 import Mol2
+from utils.mol2 import Mol2
+from tqdm.auto import tqdm
 
-for pdb_id_struct in sorted(os.listdir(raw_dir)):
+for pdb_id_struct in tqdm(sorted(os.listdir(raw_dir))):
     pre = os.path.join(raw_dir, pdb_id_struct)
     sequence_fasta = os.path.join(pre, "sequence.fasta")
     reindexed_prot = os.path.join(pre, "reindexed_protein.pdb")
     reindexed_site = os.path.join(pre, "reindexed_site.pdb")
     if os.path.exists(reindexed_site):
         continue
-    print(pdb_id_struct)
+    # print(pdb_id_struct)
     # if pdb_id_struct == "1a5s_1":
     #     exit(1)
 
     # Import mol2 and reindex the protein according to sequence fasta
-    prot_mol = Mol2(os.path.join(pre, "protein.mol2"))
-    site_mol = Mol2(os.path.join(pre, "site.mol2"))
-    prot_mol.reindex(sequence_fasta)
+    try:
+        prot_mol = Mol2(os.path.join(pre, "protein.mol2"))
+        site_mol = Mol2(os.path.join(pre, "site.mol2"))
+        prot_mol.reindex(sequence_fasta)
+    except:
+        print("Reindex Error", pdb_id_struct)
+        continue
 
     # Reindex site.mol2 file according to the alignment from protein.mol2
     site_mol.subst_df["reindex_id"] = 0
@@ -242,14 +245,14 @@ def find_site_residues(protein, site):
     and 1 represents that the amino acid is in contact with the ligand
     """
     seq_len = len(protein["sequence"])
-    labels = np.zeros(seq_len)
+    labels = ["0"] * seq_len
     for residue in site["residues"]:
         res_ind = residue.get_id()[1] - 1
         if res_ind >= seq_len:
             # These are X markers mostly
             continue
-        labels[res_ind] = 1
-    return labels
+        labels[res_ind] = "1"
+    return "".join(labels)
 
 
 def get_protein_ligand_dist(protein, ligand):
@@ -261,6 +264,7 @@ def get_protein_ligand_dist(protein, ligand):
             and the real numbers represent the distance of the ligand centroid
             from the CB (CA) atom of the amino acid (Gly)
     """
+    # NOTE: DO NOT USE CENTROID. LEADING TO NANS
     centroid = ComputeCentroid(ligand["supplier"].GetConformer())
     centroid = np.array([centroid.x, centroid.y, centroid.z])
     seq_len = len(protein["sequence"])
@@ -326,6 +330,11 @@ def get_distance_map_true(protein):
 if not os.path.exists(preprocessed_dir):
     os.mkdir(preprocessed_dir)
 
+# info_file = os.path.join(data_dir, "info.txt")
+# if os.path.exists(info_file):
+#     print("Warning: Save info.txt")
+#     exit(1)
+
 for pdb_id_struct in sorted(os.listdir(raw_dir)):
     pre = os.path.join(raw_dir, pdb_id_struct)
     chains = []
@@ -351,27 +360,43 @@ for pdb_id_struct in sorted(os.listdir(raw_dir)):
 
     for chain_id in chains:
         print(pdb_id_struct, chain_id)
+        # Generally should be the case but to avoid corner cases
+        # if chain_id in site:
+        #     labels = find_site_residues(protein[chain_id], site[chain_id])
+        # else:
+        #     print("Following not part of binding site", pdb_id_struct, chain_id)
+        #     labels = "0" * len(protein[chain_id]["sequence"])
+        # with open(info_file, "a") as f:
+        #     f.write(
+        #         "\t".join(
+        #             [
+        #                 pdb_id_struct[:4],
+        #                 pdb_id_struct[5:],
+        #                 chain_id,
+        #                 protein[chain_id]["sequence"],
+        #                 labels,
+        #             ]
+        #         )
+        #         + "\n"
+        #     )
         # Make the dictionary for storage
         try:
             data = {}
-            data["pdb_id_struct"] = pdb_id_struct
-            data["chain_id"] = chain_id
-            data["sequence"] = protein[chain_id]["sequence"]
-            data["length"] = len(data["sequence"])
-            # Generally should be the case but to avoid corner cases
-            if chain_id in site:
-                data["labels"] = find_site_residues(protein[chain_id], site[chain_id])
-            else:
-                print("Following not part of binding site", pdb_id_struct, chain_id)
-                data["labels"] = np.zeros(len(protein[chain_id]["sequence"]))
             # For structure-based prediction
-            data["dist_map_true"] = get_distance_map_true(protein[chain_id])
+            data["dist_map_true"] = get_distance_map_true(protein[chain_id]).astype(
+                np.float32
+            )
             # For penalising the loss function better
-            data["prot_lig_dist"] = get_protein_ligand_dist(protein[chain_id], ligand)
+            data["prot_lig_dist"] = get_protein_ligand_dist(
+                protein[chain_id], ligand
+            ).astype(np.float32)
         except:  # noqa: E722
             print(pdb_id_struct, chain_id, "dictionary fail")
             continue
 
+        if np.isnan(data["prot_lig_dist"]).any():
+            print(pdb_id_struct, chain_id, "NAN")
+            exit(1)
         # Write the data to a numpy .npz file
         folder = os.path.join(preprocessed_dir, pdb_id_struct)
         if not os.path.exists(folder):

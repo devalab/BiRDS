@@ -2,35 +2,15 @@
 # We define a dataset based on the preprocessed data
 import os
 from collections import defaultdict
+from glob import glob
 
 import numpy as np
 import torch
 from torch.utils.data import Dataset
 from tqdm import tqdm
 
-
-# A collate function to merge samples into a minibatch, will be used by DataLoader
-def collate_fn(samples):
-    # samples is a list of (X, y) of size MINIBATCH_SIZE
-    # Sort the samples in decreasing order of their length
-    # x[1] will be y of each sample
-    samples.sort(key=lambda x: len(x[1]), reverse=True)
-    batch_size = len(samples)
-    lengths = [0] * batch_size
-    feat_vec_len, max_len = samples[0][0].shape
-    X = torch.zeros(batch_size, feat_vec_len, max_len)
-    y = torch.zeros(batch_size, max_len)
-    if max_len == len(samples[0][1]):
-        for i, (tX, ty) in enumerate(samples):
-            lengths[i] = len(ty)
-            X[i, :, : lengths[i]] = tX
-            y[i, : lengths[i]] = ty
-    else:
-        for i, (tX, ty) in enumerate(samples):
-            lengths[i] = len(ty)
-            X[i] = tX
-            y[i, : lengths[i]] = ty
-    return X, y, lengths
+AMINO_ACIDS = "XACDEFGHIKLMNPQRSTVWY"
+AA_DICT = defaultdict(lambda: 0, {aa: idx for idx, aa in enumerate(AMINO_ACIDS)})
 
 
 class Chen(Dataset):
@@ -64,212 +44,280 @@ class Chen(Dataset):
 
 
 class Kalasanty(Dataset):
-    def __init__(
-        self, precompute_class_weights=False, fixed_length=False, get_input_size=True
-    ):
+    def __init__(self, hparams):
         super().__init__()
+        self.hparams = hparams
         self.data_dir = os.path.abspath("./data/scPDB")
-        self.splits_dir = os.path.join(self.data_dir, "splits")
         self.preprocessed_dir = os.path.join(self.data_dir, "preprocessed")
-        self.pdb_id_to_pdb_id_struct = self.get_mapping()
-        self.train_folds = self.get_train_folds()
-        self.dataset_list = self.train_folds[0].union(self.train_folds[1])
-        if fixed_length:
-            self.remove_extras()
-        self.valid_folds = self.make_valid_folds()
-        self.dataset_list = sorted(list(self.dataset_list))
-        self.pdb_id_struct_to_index = defaultdict(int)
-        for i, val in enumerate(self.dataset_list):
-            self.pdb_id_struct_to_index[val] = i
-        if precompute_class_weights:
-            # self.pos_weight = self.compute_class_weights()
-            self.pos_weight = [6505272 / 475452]
-        self.train_indices, self.valid_indices = self.custom_cv()
-        if get_input_size:
-            self.feat_vec_len = self[0][0].shape[0]
+        self.splits_dir = os.path.join(self.data_dir, "splits")
+        self.fold = str(hparams.fold)
 
-    def get_mapping(self):
-        # There are multiple structures for a particular pdb_id, taking the first one
-        available = defaultdict(str)
-        for file in sorted(os.listdir(self.preprocessed_dir)):
-            if file[:4] not in available:
-                available[file[:4]] = file
-        return available
+        # Get features and labels that are small in size
+        self.sequences, self.labels = self.get_sequences_and_labels()
+        self.aap = self.get_npy("aap", hparams.use_aap)
+        self.pssm = self.get_npy("pssm", hparams.use_pssm)
+        self.ss2 = self.get_npy("ss2", hparams.use_ss2)
+        self.solv = self.get_npy("solv", hparams.use_solv)
 
-    def get_train_folds(self):
-        train_folds = []
-        for i in range(10):
-            with open(os.path.join(self.splits_dir, "train_ids_fold" + str(i))) as f:
-                tmp = set()
-                for line in f.readlines():
-                    tmp.add(self.pdb_id_to_pdb_id_struct[line.strip()])
-                train_folds.append(tmp)
-        return train_folds
+        self.available_data = sorted(list(self.labels.keys()))
+        self.train_fold, self.valid_fold = self.get_fold()
+        self.dataset = sorted(self.train_fold + self.valid_fold)
 
-    def remove_extras(self):
-        extras = set()
-        for pdb_id_struct in tqdm(self.dataset_list, leave=False):
-            if not os.path.exists(
-                os.path.join(self.preprocessed_dir, pdb_id_struct, "features.npy")
-            ):
-                extras.add(pdb_id_struct)
-        for i in range(10):
-            self.train_folds[i] -= extras
-        self.dataset_list -= extras
+        # ------------MAPPINGS------------
+        # pdbID to pdbID_structure mapping
+        self.pi_to_pis = defaultdict(list)
+        for key in self.available_data:
+            pis = key.split("/")[0]
+            if pis not in self.pi_to_pis[key[:4]]:
+                self.pi_to_pis[key[:4]].append(pis)
 
-    def make_valid_folds(self):
-        valid_folds = []
-        for i in range(10):
-            valid_folds.append(self.dataset_list - self.train_folds[i])
-        return valid_folds
+        # pdbID_structure TO pdbID_structure/chain mapping
+        self.pis_to_pisc = defaultdict(list)
+        for key in self.available_data:
+            self.pis_to_pisc[key.split("/")[0]].append(key)
 
-    def compute_class_weights(self):
-        print("Precomputing class weights...")
+        # pdbID_structure/chain to available MSA pdbID_structure/chain sequence
+        self.pisc_to_mpisc = {}
+        with open(os.path.join(self.data_dir, "unique"), "r") as f:
+            for line in f.readlines():
+                line = line.strip().split()
+                mpisc = line[0][:-1]
+                self.pisc_to_mpisc[mpisc] = mpisc
+                for pisc in line[1:]:
+                    self.pisc_to_mpisc[pisc[:-1]] = mpisc
+
+        # Dataset pdbID to index mapping
+        self.pi_to_index = {val: key for key, val in enumerate(self.dataset)}
+
+        if hparams.compute_pos_weight:
+            # self.pos_weight = self.compute_pos_weight()
+            self.pos_weight = [6507812 / 475440]
+
+        self.train_indices = [self.pi_to_index[pi] for pi in self.train_fold]
+        self.valid_indices = [self.pi_to_index[pi] for pi in self.valid_fold]
+        self.input_size = self[0][0]["X"].shape[0]
+
+    def get_sequences_and_labels(self):
+        sequences = {}
+        labels = {}
+        with open(os.path.join(self.data_dir, "info.txt")) as f:
+            f.readline()
+            line = f.readline()
+            while line != "":
+                line = line.strip().split("\t")
+                key = line[0] + "_" + line[1] + "/" + line[2]
+                sequences[key] = line[3]
+                labels[key] = np.array([True if aa == "1" else False for aa in line[4]])
+                line = f.readline()
+        return sequences, labels
+
+    def get_npy(self, name, flag=True):
+        if not flag:
+            return None
+        mapping = {}
+        print("Loading", name)
+        for file in tqdm(
+            sorted(glob(os.path.join(self.preprocessed_dir, "*", name + "_?.npy")))
+        ):
+            pis, chain = file.split("/")[-2:]
+            chain = chain[-5:-4]
+            mapping[pis + "/" + chain] = np.load(file)
+        return mapping
+
+    def get_fold(self):
+        with open(os.path.join(self.splits_dir, "train_ids_fold" + self.fold)) as f:
+            train = sorted([line.strip() for line in f.readlines()])
+        with open(os.path.join(self.splits_dir, "test_ids_fold" + self.fold)) as f:
+            valid = sorted([line.strip() for line in f.readlines()])
+        return train, valid
+
+    def compute_pos_weight(self):
+        print("Computing positional weights...")
         zeros = 0
         ones = 0
-        for pdb_id_struct in tqdm(self.dataset_list, leave=False):
-            y = np.load(
-                os.path.join(self.preprocessed_dir, pdb_id_struct, "labels.npy")
-            )
-            one = np.count_nonzero(y)
-            ones += one
-            zeros += len(y) - one
+        for pi in tqdm(self.train_fold, leave=False):
+            pis = self.pi_to_pis[pi][0]
+            for pisc in self.pis_to_pisc[pis]:
+                try:
+                    y = self.labels[pisc]
+                except KeyError:
+                    print(pi, pisc)
+                one = np.count_nonzero(y)
+                ones += one
+                zeros += len(y) - one
         pos_weight = [zeros / ones]
-        print("Done")
+        print(zeros, ones, "Done")
         return pos_weight
 
-    def custom_cv(self):
-        train_indices = []
-        valid_indices = []
-        for i in range(10):
-            train_indices.append(
-                [self.pdb_id_struct_to_index[el] for el in self.train_folds[i]]
-            )
-            valid_indices.append(
-                [self.pdb_id_struct_to_index[el] for el in self.valid_folds[i]]
-            )
-        return train_indices, valid_indices
-
     def __getitem__(self, index):
-        pdb_id_struct = self.dataset_list[index]
-        X = torch.from_numpy(
-            np.load(os.path.join(self.preprocessed_dir, pdb_id_struct, "features.npy"))
-        )
-        y = torch.from_numpy(
-            np.load(os.path.join(self.preprocessed_dir, pdb_id_struct, "labels.npy"))
-        )
+        pi = self.dataset[index]
+        # Taking the first structure available
+        pis = self.pi_to_pis[pi][0]
+        # For all available chains
+        X = {}
+        y = {}
+        for i, pisc in enumerate(self.pis_to_pisc[pis]):
+            mpisc = self.pisc_to_mpisc[pisc]
+            sequence = self.sequences[pisc]
+            if self.hparams.use_tape_embeddings:
+                tape = np.load(
+                    os.path.join(
+                        self.preprocessed_dir, mpisc[:-2], "tape_" + mpisc[-1] + ".npy"
+                    )
+                )
+            oh = np.array([np.eye(len(AMINO_ACIDS))[AA_DICT[aa]] for aa in sequence]).T
+            pe = np.arange(1, len(sequence) + 1).reshape((1, -1)) / len(sequence)
+            inputs = [oh, pe]
+            if self.hparams.use_aap:
+                inputs.append(self.aap[mpisc])
+            if self.hparams.use_pssm:
+                inputs.append(self.pssm[mpisc])
+            if self.hparams.use_ss2:
+                inputs.append(self.ss2[mpisc])
+            if self.hparams.use_solv:
+                inputs.append(self.solv[mpisc])
+            feature = np.vstack(inputs)
+            label = self.labels[pisc]
+            # Add 0s at start and 1s at end to give an idea of different chains
+            ln = feature.shape[0]
+            feature = np.hstack((np.zeros((ln, 1)), feature, np.ones((ln, 1)))).astype(
+                np.float32
+            )
+            label = np.hstack(([0], label, [0])).astype(np.float32)
+            if i == 0:
+                if self.hparams.use_tape_embeddings:
+                    X["seq"] = tape
+                X["X"] = feature
+                y["y"] = label
+            else:
+                if self.hparams.use_tape_embeddings:
+                    X["seq"] = np.hstack((X["seq"], tape))
+                X["X"] = np.hstack((X["X"], feature))
+                y["y"] = np.hstack((y["y"], label))
         return X, y
 
     def __len__(self):
         return len(self.dataset_list)
 
+    @staticmethod
+    # A collate function to merge samples into a minibatch, will be used by DataLoader
+    def collate_fn(samples):
+        # samples is a list of (X, y) of size MINIBATCH_SIZE
+        # Sort the samples in decreasing order of their length
+        # x[1] will be y of each sample
+        samples.sort(key=lambda x: len(x[1]["y"]), reverse=True)
+        batch_size = len(samples)
 
-class KalasantyChains(Kalasanty):
-    def __init__(self, precompute_class_weights=False, fixed_length=False):
-        super().__init__(
-            precompute_class_weights=precompute_class_weights, fixed_length=fixed_length
-        )
-
-    def get_train_folds(self):
-        train_folds = []
-        for i in range(10):
-            with open(os.path.join(self.splits_dir, "train_ids_fold" + str(i))) as f:
-                tmp = set()
-                for line in f.readlines():
-                    pdb_id_struct = self.pdb_id_to_pdb_id_struct[line.strip()]
-                    for file in sorted(
-                        os.listdir(os.path.join(self.preprocessed_dir, pdb_id_struct))
-                    ):
-                        if file.startswith("feat"):
-                            tmp.add(pdb_id_struct + "/" + file[9:10])
-                train_folds.append(tmp)
-        return train_folds
-
-    def __getitem__(self, index):
-        pdb_id_struct, chain_id = self.dataset_list[index].split("/")
-        X = torch.from_numpy(
-            np.load(
-                os.path.join(
-                    self.preprocessed_dir,
-                    pdb_id_struct,
-                    "features_" + chain_id + ".npy",
-                )
-            )
-        )
-        y = torch.from_numpy(
-            np.load(
-                os.path.join(
-                    self.preprocessed_dir, pdb_id_struct, "labels_" + chain_id + ".npy"
-                )
-            )
-        )
-        return X, y
-
-
-def collate_fn_dict(samples):
-    # samples is a list of (X, y) of size MINIBATCH_SIZE
-    # Sort the samples in decreasing order of their length
-    # x[1] will be y of each sample
-    samples.sort(key=lambda x: len(x[1]["y"]), reverse=True)
-    batch_size = len(samples)
-
-    lengths = [0] * batch_size
-    for i, (tX, ty) in enumerate(samples):
-        lengths[i] = len(ty["y"])
-
-    X = {}
-    for key in samples[0][0].keys():
-        feat_vec_len, max_len = samples[0][0][key].shape
-        X[key] = torch.zeros(batch_size, feat_vec_len, max_len)
+        lengths = [0] * batch_size
         for i, (tX, ty) in enumerate(samples):
-            X[key][i, :, : lengths[i]] = tX[key]
+            lengths[i] = len(ty["y"])
 
-    y = {}
-    for key in samples[0][1].keys():
-        max_len = samples[0][1][key].shape[0]
-        y[key] = torch.zeros(batch_size, max_len)
-        for i, (tX, ty) in enumerate(samples):
-            y[key][i, : lengths[i]] = ty[key]
-    return X, y, lengths
-
-
-class KalasantyDict(Kalasanty):
-    def __init__(
-        self,
-        precompute_class_weights=False,
-        fixed_length=False,
-        use_dist_map=False,
-        use_pl_dist=False,
-    ):
-        self.use_dist_map = use_dist_map
-        self.use_pl_dist = use_pl_dist
-        super().__init__(
-            precompute_class_weights=precompute_class_weights,
-            fixed_length=fixed_length,
-            get_input_size=False,
-        )
-        self.feat_vec_len = self[0][0]["X"].shape[0]
-
-    def __getitem__(self, index):
-        pdb_id_struct = self.dataset_list[index]
         X = {}
+        fX = samples[0][0]
+        for key in fX.keys():
+            X[key] = np.zeros((batch_size, *fX[key].shape), dtype=fX[key].dtype)
+            for i, (tX, ty) in enumerate(samples):
+                X[key][i, ..., : lengths[i]] = tX[key]
+            X[key] = torch.from_numpy(X[key])
+
         y = {}
-        X["X"] = torch.from_numpy(
-            np.load(os.path.join(self.preprocessed_dir, pdb_id_struct, "features.npy"))
+        fy = samples[0][1]
+        for key in fy.keys():
+            y[key] = np.zeros((batch_size, *fy[key].shape), dtype=fy[key].dtype)
+            for i, (tX, ty) in enumerate(samples):
+                y[key][i, ..., : lengths[i]] = ty[key]
+            y[key] = torch.from_numpy(y[key])
+        return X, y, lengths
+
+    @staticmethod
+    def add_class_specific_args(parser):
+        parser.add_argument(
+            "--fold",
+            metavar="NUMBER",
+            type=int,
+            default=0,
+            help="Cross Validation fold number to train on. Default: %(default)d",
         )
-        if self.use_dist_map:
-            X["dist_map"] = torch.from_numpy(
-                np.load(
-                    os.path.join(self.preprocessed_dir, pdb_id_struct, "dist_map.npy")
-                )
-            )
-        y["y"] = torch.from_numpy(
-            np.load(os.path.join(self.preprocessed_dir, pdb_id_struct, "labels.npy"))
+        parser.add_argument(
+            "--pos-weight",
+            dest="compute_pos_weight",
+            action="store_true",
+            help="Compute the positional weight of the binding residue class. Default: %(default)s",
         )
-        if self.use_pl_dist:
-            y["pl_dist"] = torch.from_numpy(
-                np.load(
-                    os.path.join(self.preprocessed_dir, pdb_id_struct, "pl_dist.npy")
-                )
-            )
-        return X, y
+        parser.add_argument(
+            "--no-pos-weight", dest="compute_pos_weight", action="store_false",
+        )
+        parser.set_defaults(compute_pos_weight=True)
+
+        parser.add_argument(
+            "--fixed-length",
+            metavar="LENGTH",
+            type=int,
+            help="Use a fixed length input instead of variable lengths",
+        )
+
+        parser.add_argument(
+            "--amino-acid-probabilities",
+            dest="use_aap",
+            action="store_true",
+            help="Use amino acid probabilities in input features for the model. Default: %(default)s",
+        )
+        parser.add_argument(
+            "--no-amino-acid-probabilities", dest="use_aap", action="store_false"
+        )
+        parser.set_defaults(use_aap=False)
+
+        parser.add_argument(
+            "--pssm",
+            dest="use_pssm",
+            action="store_true",
+            help="Use Position Specific Scoring Matrix in input features for the model. Default: %(default)s",
+        )
+        parser.add_argument("--no-pssm", dest="use_pssm", action="store_false")
+        parser.set_defaults(use_pssm=True)
+
+        parser.add_argument(
+            "--secondary-structure",
+            dest="use_ss2",
+            action="store_true",
+            help="Use predicted secondary structure in input features for the model. Default: %(default)s",
+        )
+        parser.add_argument(
+            "--no-secondary-structure", dest="use_ss2", action="store_false"
+        )
+        parser.set_defaults(use_ss2=True)
+
+        parser.add_argument(
+            "--solvent-accessibility",
+            dest="use_solv",
+            action="store_true",
+            help="Use predicted solvent accessibilities in input features for the model. Default: %(default)s",
+        )
+        parser.add_argument(
+            "--no-solvent-accessibility", dest="use_solv", action="store_false"
+        )
+        parser.set_defaults(use_solv=True)
+
+        parser.add_argument(
+            "--protein-ligand-distance",
+            dest="use_pl_dist",
+            action="store_true",
+            help="Use distance between amino acid residues and ligand to improve loss function. Default: %(default)s",
+        )
+        parser.add_argument(
+            "--no-protein-ligand-distance", dest="use_pl_dist", action="store_false"
+        )
+        parser.set_defaults(use_pl_dist=False)
+
+        parser.add_argument(
+            "--tape-embeddings",
+            dest="use_tape_embeddings",
+            action="store_true",
+            help="Use a BERT model on sequence to understand the language of proteins. Default: %(default)s",
+        )
+        parser.add_argument(
+            "--no-tape-embeddings", dest="use_tape_embeddings", action="store_false"
+        )
+        parser.set_defaults(use_tape_embeddings=False)
+
+        return parser

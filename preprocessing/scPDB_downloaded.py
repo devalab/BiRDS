@@ -220,7 +220,7 @@ from Bio import BiopythonWarning
 from Bio.PDB import PDBParser, is_aa
 from rdkit import Chem
 from rdkit.Chem.rdMolTransforms import ComputeCentroid
-from preprocessing.utils.reindex_pdb import reindex_pdb
+from utils.reindex_pdb import reindex_pdb
 
 warnings.simplefilter("ignore", BiopythonWarning)
 parser = PDBParser()

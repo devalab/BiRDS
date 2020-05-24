@@ -1,5 +1,3 @@
-from argparse import ArgumentParser
-
 import torch.nn as nn
 
 
@@ -173,7 +171,7 @@ class ResNet(nn.Module):
         return x
 
     @staticmethod
-    def add_model_specific_args(parser):
+    def add_class_specific_args(parser):
         parser.add_argument(
             "--num_blocks",
             type=int,

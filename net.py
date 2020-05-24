@@ -6,13 +6,14 @@ from torch.optim import SGD, Adam
 from torch.optim.lr_scheduler import ReduceLROnPlateau
 from torch.utils.data import DataLoader, Subset
 
-from datasets import Chen, Kalasanty, KalasantyDict, collate_fn, collate_fn_dict
+from datasets import Chen, Kalasanty
 from metrics import (
     batch_loss,
     batch_metrics,
     detector_margin_loss,
     generator_mse_loss,
     generator_pos_loss,
+    pl_weighted_loss,
     weighted_bce_loss,
     weighted_focal_loss,
 )
@@ -25,28 +26,37 @@ class Net(pl.LightningModule):
     def __init__(self, hparams):
         super().__init__()
         self.hparams = hparams
-        self.train_ds = Kalasanty(precompute_class_weights=True, fixed_length=False)
-        self.collate_fn = collate_fn
-        if hparams.testing:
+        self.train_ds = Kalasanty(hparams)
+        if hparams.run_tests:
             self.test_ds = Chen()
+
+        if hparams.use_tape_embeddings:
+            self.fc1 = torch.nn.Linear(768, 32)
+            self.train_ds.input_size += 32
 
         if hparams.embedding_model == "bilstm":
             self.model_class = BiLSTM
         else:
             self.model_class = ResNet
-        self.embedding_model = self.model_class(self.train_ds.feat_vec_len, hparams)
-        dummy = torch.ones((1, self.train_ds.feat_vec_len, 100))
+        self.embedding_model = self.model_class(self.train_ds.input_size, hparams)
+        dummy = torch.ones((1, self.train_ds.input_size, 10))
         self.embedding_dim = self.embedding_model(dummy, dummy.shape[2]).shape[1]
 
         self.detector = Detector(self.embedding_dim, hparams)
         if hparams.loss == "focal":
             self.loss_func = weighted_focal_loss
+        elif hparams.loss == "pl":
+            self.loss_func = pl_weighted_loss
         else:
             self.loss_func = weighted_bce_loss
 
-    def forward(self, X, lengths):
+    def forward(self, features, lengths):
         # [Batch, hidden_sizes[-1], Max_length]
-        output = self.embedding_model(X, lengths)
+        output = features["X"]
+        if self.hparams.use_tape_embeddings:
+            tmp = self.fc1(features["seq"].transpose(1, 2)).transpose(1, 2)
+            output = torch.cat((output, tmp), 1)
+        output = self.embedding_model(output, lengths)
 
         # [Batch, hidden_sizes[-1], Max_length] -> [Batch, Max_length]
         output = output.transpose(1, 2)
@@ -67,18 +77,18 @@ class Net(pl.LightningModule):
 
     def train_dataloader(self):
         return DataLoader(
-            Subset(self.train_ds, self.train_ds.train_indices[0]),
+            Subset(self.train_ds, self.train_ds.train_indices),
             batch_size=self.hparams.batch_size,
-            collate_fn=self.collate_fn,
+            collate_fn=self.train_ds.collate_fn,
             num_workers=10,
             shuffle=True,
         )
 
     def val_dataloader(self):
         return DataLoader(
-            Subset(self.train_ds, self.train_ds.valid_indices[0]),
+            Subset(self.train_ds, self.train_ds.valid_indices),
             batch_size=self.hparams.batch_size,
-            collate_fn=self.collate_fn,
+            collate_fn=self.train_ds.collate_fn,
             num_workers=10,
             shuffle=False,
         )
@@ -87,7 +97,7 @@ class Net(pl.LightningModule):
         return DataLoader(
             self.test_ds,
             batch_size=self.hparams.batch_size,
-            collate_fn=self.collate_fn,
+            collate_fn=self.train_ds.collate_fn,
             num_workers=10,
             shuffle=False,
         )
@@ -114,20 +124,22 @@ class Net(pl.LightningModule):
         optim.zero_grad()
 
     def training_step(self, batch, batch_idx):
-        X, y, lengths = batch
-        y_pred = self(X, lengths)
-        loss = batch_loss(
-            y_pred, y, lengths, self.loss_func, pos_weight=self.train_ds.pos_weight
-        )
+        features, labels, lengths = batch
+        y_pred = self(features, lengths)
+        if self.hparams.use_pl_dist:
+            kwargs = {"pl_dist": labels["pl_dist"]}
+        else:
+            kwargs = {"pos_weight": self.train_ds.pos_weight}
+        loss = batch_loss(y_pred, labels["y"], lengths, self.loss_func, **kwargs)
         return {"loss": loss, "log": {"loss": loss}}
 
     def val_test_step(self, batch, batch_idx, prefix):
-        X, y, lengths = batch
-        y_pred = self(X, lengths)
+        features, labels, lengths = batch
+        y_pred = self(features, lengths)
         metrics = OrderedDict(
-            {prefix + "loss": batch_loss(y_pred, y, lengths, self.loss_func)}
+            {prefix + "loss": batch_loss(y_pred, labels["y"], lengths, self.loss_func)}
         )
-        for key, val in batch_metrics(y_pred, y, lengths).items():
+        for key, val in batch_metrics(y_pred, labels["y"], lengths).items():
             metrics[prefix + key] = val
         return metrics
 
@@ -147,8 +159,8 @@ class Net(pl.LightningModule):
         return self.validation_epoch_end(outputs)
 
     @staticmethod
-    def add_model_specific_args(parser):
-        parser = Detector.add_model_specific_args(parser)
+    def add_class_specific_args(parser):
+        parser = Detector.add_class_specific_args(parser)
         parser.add_argument(
             "--embedding-model",
             default="resnet",
@@ -172,96 +184,6 @@ class Net(pl.LightningModule):
         return parser
 
 
-class NetDict(Net):
-    def __init__(self, hparams):
-        super().__init__(hparams)
-        self.train_ds = KalasantyDict(
-            precompute_class_weights=True,
-            fixed_length=False,
-            use_dist_map=hparams.use_dist_map,
-            use_pl_dist=hparams.use_pl_dist,
-        )
-        self.collate_fn = collate_fn_dict
-        if hparams.use_dist_map:
-            self.dist_map_model = self.model_class(512, hparams)
-            self.detector = Detector(2 * self.embedding_dim, hparams)
-        if hparams.use_pl_dist:
-            self.loss_func = self.pl_weighted_loss
-
-    def forward(self, X, lengths):
-        # [Batch, hidden_sizes[-1], Max_length]
-        output = self.embedding_model(X["X"], lengths)
-        if self.hparams.use_dist_map:
-            out2 = self.dist_map_model(X["dist_map"], lengths)
-            output = torch.cat((output, out2), 1)
-            # [Batch, 2 * hidden_sizes[-1], Max_length] -> [Batch, Max_length]
-
-        # [Batch, hidden_sizes[-1], Max_length] -> [Batch, Max_length]
-        output = output.transpose(1, 2)
-        output = self.detector(output)
-
-        return output
-
-    def pl_weighted_loss(
-        self, y_pred, y_true, batch_idx, lengths, pl_dist=None, **kwargs
-    ):
-        y_pred = torch.clamp(torch.sigmoid(y_pred), SMOOTH, 1.0 - SMOOTH)
-        if self.training:
-            assert pl_dist is not None
-            tmp = pl_dist[batch_idx, : lengths[batch_idx]]
-            # if lengths[batch_idx] < 75:
-            #     print(tmp)
-            #     print(y_true)
-            #     exit(1)
-            loss = -(15 * y_true * torch.log(y_pred)) - (
-                (1 - y_true) * torch.log(1.0 - y_pred) * (tmp / 10.0)
-            )
-        else:
-            loss = -(y_true * torch.log(y_pred)) - (
-                (1 - y_true) * torch.log(1.0 - y_pred)
-            )
-        return torch.mean(loss)
-
-    def training_step(self, batch, batch_idx):
-        X, y, lengths = batch
-        y_pred = self(X, lengths)
-        if self.hparams.use_pl_dist:
-            loss = batch_loss(
-                y_pred, y["y"], lengths, self.loss_func, pl_dist=y["pl_dist"]
-            )
-        else:
-            loss = batch_loss(y_pred, y["y"], lengths, self.loss_func)
-        return {"loss": loss, "log": {"loss": loss}}
-
-    def val_test_step(self, batch, batch_idx, prefix):
-        X, y, lengths = batch
-        y_pred = self(X, lengths)
-        metrics = OrderedDict(
-            {prefix + "loss": batch_loss(y_pred, y["y"], lengths, self.loss_func)}
-        )
-        for key, val in batch_metrics(y_pred, y["y"], lengths).items():
-            metrics[prefix + key] = val
-        return metrics
-
-    @staticmethod
-    def add_model_specific_args(parser):
-        parser.add_argument(
-            "--use-dist-map",
-            dest="use_dist_map",
-            action="store_true",
-            help="Default: %(default)s",
-        )
-        parser.set_defaults(use_dist_map=False)
-        parser.add_argument(
-            "--use-pl-dist",
-            dest="use_pl_dist",
-            action="store_true",
-            help="Default: %(default)s",
-        )
-        parser.set_defaults(use_pl_dist=False)
-        return parser
-
-
 class CGAN(pl.LightningModule):
     def __init__(self, hparams, net):
         super().__init__()
@@ -269,9 +191,13 @@ class CGAN(pl.LightningModule):
         self.net = net
         self.generator = CGenerator(self.net.embedding_dim, hparams)
 
-    def forward(self, X, lengths):
+    def forward(self, features, lengths):
         # [Batch, hidden_sizes[-1], Max_length]
-        output = self.net.embedding_model(X, lengths)
+        output = features["X"]
+        if self.hparams.use_tape_embeddings:
+            tmp = self.fc1(features["seq"].transpose(1, 2)).transpose(1, 2)
+            output = torch.cat((output, tmp), 1)
+        output = self.embedding_model(output, lengths)
         # Return the embeddings as [Batch, Max_length, hidden_sizes[-1]]
         return output.transpose(1, 2)
 
@@ -300,17 +226,19 @@ class CGAN(pl.LightningModule):
         return [opt_g, opt_d]
 
     def training_step(self, batch, batch_idx, optimizer_idx):
-        X, y, lengths = batch
+        features, labels, lengths = batch
         mask = []
-        for i, yt in enumerate(y):
+        for i, yt in enumerate(labels["y"]):
             mask.append(torch.eq(yt[: lengths[i]], 0))
 
         # Train Generator
         if optimizer_idx == 0:
-            self.embed = self(X, lengths)
+            self.embed = self(features, lengths)
             generated_embed = self.generator(self.embed)
             y_fake_pred = self.net.detector(generated_embed)
-            g_pos_loss = batch_loss(y_fake_pred, y, lengths, generator_pos_loss)
+            g_pos_loss = batch_loss(
+                y_fake_pred, labels["y"], lengths, generator_pos_loss
+            )
             if self.hparams.use_mse_loss:
                 g_mse_loss = batch_loss(
                     generated_embed, self.embed, lengths, generator_mse_loss, mask=mask
@@ -335,14 +263,16 @@ class CGAN(pl.LightningModule):
             generated_embed = self.generator(self.embed)
             net_loss = batch_loss(
                 y_pred,
-                y,
+                labels["y"],
                 lengths,
                 self.net.loss_func,
                 pos_weight=self.net.train_ds.pos_weight,
             )
             if self.hparams.use_margin_loss:
                 y_fake_pred = self.net.detector(generated_embed)
-                mar_loss = batch_loss(y_fake_pred, y, lengths, detector_margin_loss)
+                mar_loss = batch_loss(
+                    y_fake_pred, labels["y"], lengths, detector_margin_loss
+                )
                 d_loss = net_loss + self.hparams.detector_lambda * mar_loss
                 log_dict = {
                     "net_loss": net_loss,
@@ -370,7 +300,7 @@ class CGAN(pl.LightningModule):
         return self.net.validation_epoch_end(outputs)
 
     @staticmethod
-    def add_model_specific_args(parser):
+    def add_class_specific_args(parser):
         parser.add_argument(
             "--cgan-epochs",
             metavar="EPOCHS",
@@ -384,7 +314,7 @@ class CGAN(pl.LightningModule):
             type=float,
             help="CGAN Learning Rate. Default: %(default)f",
         )
-        parser = CGenerator.add_model_specific_args(parser)
+        parser = CGenerator.add_class_specific_args(parser)
         parser.add_argument(
             "--generator-opt",
             metavar="OPTIMIZER",

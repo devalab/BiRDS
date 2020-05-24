@@ -6,7 +6,7 @@ import sys
 import tarfile
 import textwrap
 
-from preprocessing.utils.NWalign import code_with_modified_residues
+from utils.NWalign import code_with_modified_residues
 
 docstring = """
 pdb2fasta.py pdb.pdb > seq.fasta

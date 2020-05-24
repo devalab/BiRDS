@@ -1,6 +1,7 @@
 from collections import OrderedDict
-from torch.nn.functional import binary_cross_entropy_with_logits, mse_loss
+
 import torch
+from torch.nn.functional import binary_cross_entropy_with_logits, mse_loss
 
 SMOOTH = 1e-6
 
@@ -76,6 +77,18 @@ def weighted_focal_loss(y_pred, y_true, gamma=2.0, pos_weight=[1], **kwargs):
     loss = -(
         pos_weight * y_true * torch.pow(1.0 - y_pred, gamma) * torch.log(y_pred)
     ) - ((1 - y_true) * torch.pow(y_pred, gamma) * torch.log(1.0 - y_pred))
+    return torch.mean(loss)
+
+
+def pl_weighted_loss(y_pred, y_true, batch_idx, lengths, pl_dist=None, **kwargs):
+    y_pred = torch.clamp(torch.sigmoid(y_pred), SMOOTH, 1.0 - SMOOTH)
+    if pl_dist is not None:
+        tmp = pl_dist[batch_idx, : lengths[batch_idx]]
+        loss = -(15 * y_true * torch.log(y_pred)) - (
+            (1 - y_true) * torch.log(1.0 - y_pred) * (tmp / 10.0)
+        )
+    else:
+        loss = -(y_true * torch.log(y_pred)) - ((1 - y_true) * torch.log(1.0 - y_pred))
     return torch.mean(loss)
 
 
