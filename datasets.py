@@ -6,51 +6,27 @@ from glob import glob
 
 import numpy as np
 import torch
+from tape import TAPETokenizer
 from torch.utils.data import Dataset
 from tqdm import tqdm
 
 AMINO_ACIDS = "XACDEFGHIKLMNPQRSTVWY"
 AA_DICT = defaultdict(lambda: 0, {aa: idx for idx, aa in enumerate(AMINO_ACIDS)})
+tokenizer = TAPETokenizer(vocab="iupac")
 
 
-class Chen(Dataset):
-    def __init__(self):
-        super().__init__()
-        self.data_dir = os.path.abspath("./data/chen")
-        self.preprocessed_dir = os.path.join(self.data_dir, "preprocessed")
-        self.dataset_list = self.get_dataset_list()
-        self.pdb_id_to_index = defaultdict(int)
-        for i, val in enumerate(self.dataset_list):
-            self.pdb_id_to_index[val] = i
-
-    def get_dataset_list(self):
-        available = []
-        for file in sorted(os.listdir(self.preprocessed_dir)):
-            available.append(file)
-        return sorted(available)
-
-    def __getitem__(self, index):
-        pdb_id = self.dataset_list[index]
-        X = torch.from_numpy(
-            np.load(os.path.join(self.preprocessed_dir, pdb_id, "features.npy"))
-        )
-        y = torch.from_numpy(
-            np.load(os.path.join(self.preprocessed_dir, pdb_id, "labels.npy"))
-        )
-        return X, y
-
-    def __len__(self):
-        return len(self.dataset_list)
-
-
-class Kalasanty(Dataset):
-    def __init__(self, hparams):
+class scPDB(Dataset):
+    def __init__(self, hparams, test=False):
         super().__init__()
         self.hparams = hparams
-        self.data_dir = os.path.abspath("./data/scPDB")
+        if test:
+            self.data_dir = os.path.abspath("./data/2018_scPDB")
+        else:
+            self.data_dir = os.path.abspath("./data/scPDB")
+            self.splits_dir = os.path.join(self.data_dir, "splits")
+            self.fold = str(hparams.fold)
         self.preprocessed_dir = os.path.join(self.data_dir, "preprocessed")
-        self.splits_dir = os.path.join(self.data_dir, "splits")
-        self.fold = str(hparams.fold)
+        self.msa_dir = os.path.join(self.data_dir, "msa")
 
         # Get features and labels that are small in size
         self.sequences, self.labels = self.get_sequences_and_labels()
@@ -58,11 +34,14 @@ class Kalasanty(Dataset):
         self.pssm = self.get_npy("pssm", hparams.use_pssm)
         self.ss2 = self.get_npy("ss2", hparams.use_ss2)
         self.solv = self.get_npy("solv", hparams.use_solv)
+        self.spot_ss3 = self.get_npy("ss3", hparams.use_ss3)
+        self.spot_ss8 = self.get_npy("ss8", hparams.use_ss8)
+        self.spot_asa = self.get_npy("asa", hparams.use_asa)
+        self.spot_hse = self.get_npy("hse", hparams.use_hse)
+        self.spot_cn13 = self.get_npy("cn13", hparams.use_cn13)
+        self.spot_torsion = self.get_npy("torsion", hparams.use_torsion)
 
         self.available_data = sorted(list(self.labels.keys()))
-        self.train_fold, self.valid_fold = self.get_fold()
-        self.dataset = sorted(self.train_fold + self.valid_fold)
-
         # ------------MAPPINGS------------
         # pdbID to pdbID_structure mapping
         self.pi_to_pis = defaultdict(list)
@@ -78,7 +57,7 @@ class Kalasanty(Dataset):
 
         # pdbID_structure/chain to available MSA pdbID_structure/chain sequence
         self.pisc_to_mpisc = {}
-        with open(os.path.join(self.data_dir, "unique"), "r") as f:
+        with open(os.path.join(self.data_dir, "no_one_msa_unique"), "r") as f:
             for line in f.readlines():
                 line = line.strip().split()
                 mpisc = line[0][:-1]
@@ -87,20 +66,28 @@ class Kalasanty(Dataset):
                     self.pisc_to_mpisc[pisc[:-1]] = mpisc
 
         # Dataset pdbID to index mapping
-        self.pi_to_index = {val: key for key, val in enumerate(self.dataset)}
+        if test:
+            self.dataset = sorted(list(self.pi_to_pis.keys()))
+        else:
+            self.train_fold, self.valid_fold = self.get_fold()
+            self.dataset = sorted(self.train_fold + self.valid_fold)
 
-        if hparams.compute_pos_weight:
-            # self.pos_weight = self.compute_pos_weight()
-            self.pos_weight = [6507812 / 475440]
+        self.pi_to_index = {pi: idx for idx, pi in enumerate(self.dataset)}
 
-        self.train_indices = [self.pi_to_index[pi] for pi in self.train_fold]
-        self.valid_indices = [self.pi_to_index[pi] for pi in self.valid_fold]
+        if not test:
+            if hparams.compute_pos_weight:
+                # self.pos_weight = self.compute_pos_weight()
+                self.pos_weight = [6507812 / 475440]
+
+            self.train_indices = [self.pi_to_index[pi] for pi in self.train_fold]
+            self.valid_indices = [self.pi_to_index[pi] for pi in self.valid_fold]
+
         self.input_size = self[0][0]["X"].shape[0]
 
     def get_sequences_and_labels(self):
         sequences = {}
         labels = {}
-        with open(os.path.join(self.data_dir, "info.txt")) as f:
+        with open(os.path.join(self.data_dir, "no_one_msa_info.txt")) as f:
             f.readline()
             line = f.readline()
             while line != "":
@@ -116,9 +103,10 @@ class Kalasanty(Dataset):
             return None
         mapping = {}
         print("Loading", name)
-        for file in tqdm(
-            sorted(glob(os.path.join(self.preprocessed_dir, "*", name + "_?.npy")))
-        ):
+        tmp = glob(os.path.join(self.preprocessed_dir, "*", name + "_?.npy"))
+        if tmp == []:
+            tmp = glob(os.path.join(self.msa_dir, "*", name + "_?.npy"))
+        for file in tqdm(sorted(tmp)):
             pis, chain = file.split("/")[-2:]
             chain = chain[-5:-4]
             mapping[pis + "/" + chain] = np.load(file)
@@ -159,7 +147,9 @@ class Kalasanty(Dataset):
         for i, pisc in enumerate(self.pis_to_pisc[pis]):
             mpisc = self.pisc_to_mpisc[pisc]
             sequence = self.sequences[pisc]
-            if self.hparams.use_tape_embeddings:
+            if self.hparams.use_tape_model:
+                tape = np.array(tokenizer.encode(sequence))
+            elif self.hparams.use_tape_embeddings:
                 tape = np.load(
                     os.path.join(
                         self.preprocessed_dir, mpisc[:-2], "tape_" + mpisc[-1] + ".npy"
@@ -176,8 +166,30 @@ class Kalasanty(Dataset):
                 inputs.append(self.ss2[mpisc])
             if self.hparams.use_solv:
                 inputs.append(self.solv[mpisc])
-            feature = np.vstack(inputs)
-            label = self.labels[pisc]
+
+            if self.hparams.use_ss3:
+                inputs.append(self.spot_ss3[mpisc])
+            if self.hparams.use_ss8:
+                inputs.append(self.spot_ss8[mpisc])
+            if self.hparams.use_asa:
+                # RSA = ASA / MaxASA
+                tmp = self.spot_asa[mpisc]
+                inputs.append(tmp / tmp.max())
+            if self.hparams.use_cn13:
+                # Normalize the Contact Number
+                tmp = self.spot_cn13[mpisc]
+                inputs.append(tmp / tmp.max())
+            if self.hparams.use_hse:
+                # Normalize the HSE
+                tmp = self.spot_hse[mpisc]
+                # Divide each row by the maximum
+                inputs.append(tmp / tmp.max(axis=1)[:, None])
+            if self.hparams.use_torsion:
+                # Normalize or convert to sin and cos
+                inputs.append(self.spot_torsion[mpisc] / 360.0)
+
+            feature = np.vstack(inputs).astype(np.float32)
+            label = self.labels[pisc].astype(np.float32)
             # Add 0s at start and 1s at end to give an idea of different chains
             ln = feature.shape[0]
             feature = np.hstack((np.zeros((ln, 1)), feature, np.ones((ln, 1)))).astype(
@@ -185,19 +197,19 @@ class Kalasanty(Dataset):
             )
             label = np.hstack(([0], label, [0])).astype(np.float32)
             if i == 0:
-                if self.hparams.use_tape_embeddings:
+                if self.hparams.use_tape_model or self.hparams.use_tape_embeddings:
                     X["seq"] = tape
                 X["X"] = feature
                 y["y"] = label
             else:
-                if self.hparams.use_tape_embeddings:
+                if self.hparams.use_tape_model or self.hparams.use_tape_embeddings:
                     X["seq"] = np.hstack((X["seq"], tape))
                 X["X"] = np.hstack((X["X"], feature))
                 y["y"] = np.hstack((y["y"], label))
         return X, y
 
     def __len__(self):
-        return len(self.dataset_list)
+        return len(self.dataset)
 
     @staticmethod
     # A collate function to merge samples into a minibatch, will be used by DataLoader
@@ -257,14 +269,12 @@ class Kalasanty(Dataset):
         )
 
         parser.add_argument(
-            "--amino-acid-probabilities",
+            "--aap",
             dest="use_aap",
             action="store_true",
             help="Use amino acid probabilities in input features for the model. Default: %(default)s",
         )
-        parser.add_argument(
-            "--no-amino-acid-probabilities", dest="use_aap", action="store_false"
-        )
+        parser.add_argument("--no-aap", dest="use_aap", action="store_false")
         parser.set_defaults(use_aap=False)
 
         parser.add_argument(
@@ -274,50 +284,109 @@ class Kalasanty(Dataset):
             help="Use Position Specific Scoring Matrix in input features for the model. Default: %(default)s",
         )
         parser.add_argument("--no-pssm", dest="use_pssm", action="store_false")
-        parser.set_defaults(use_pssm=True)
+        parser.set_defaults(use_pssm=False)
 
         parser.add_argument(
-            "--secondary-structure",
+            "--ss2",
             dest="use_ss2",
             action="store_true",
-            help="Use predicted secondary structure in input features for the model. Default: %(default)s",
+            help="Use secondary structure predicted using PSIPRED. Default: %(default)s",
         )
-        parser.add_argument(
-            "--no-secondary-structure", dest="use_ss2", action="store_false"
-        )
-        parser.set_defaults(use_ss2=True)
+        parser.add_argument("--no-ss2", dest="use_ss2", action="store_false")
+        parser.set_defaults(use_ss2=False)
 
         parser.add_argument(
-            "--solvent-accessibility",
+            "--solv",
             dest="use_solv",
             action="store_true",
-            help="Use predicted solvent accessibilities in input features for the model. Default: %(default)s",
+            help="Use solvent accessibilities predicted using SOLVPRED. Default: %(default)s",
         )
-        parser.add_argument(
-            "--no-solvent-accessibility", dest="use_solv", action="store_false"
-        )
-        parser.set_defaults(use_solv=True)
+        parser.add_argument("--no-solv", dest="use_solv", action="store_false")
+        parser.set_defaults(use_solv=False)
 
         parser.add_argument(
-            "--protein-ligand-distance",
+            "--ss3",
+            dest="use_ss3",
+            action="store_true",
+            help="Use 3-state secondary structure predicted using SPOT-1D. Default: %(default)s",
+        )
+        parser.add_argument("--no-ss3", dest="use_ss3", action="store_false")
+        parser.set_defaults(use_ss3=False)
+
+        parser.add_argument(
+            "--ss8",
+            dest="use_ss8",
+            action="store_true",
+            help="Use 8-state secondary structure predicted using SPOT-1D. Default: %(default)s",
+        )
+        parser.add_argument("--no-ss8", dest="use_ss8", action="store_false")
+        parser.set_defaults(use_ss8=False)
+
+        parser.add_argument(
+            "--asa",
+            dest="use_asa",
+            action="store_true",
+            help="Use Accessible Surface area predicted using SPOT-1D. Default: %(default)s",
+        )
+        parser.add_argument("--no-asa", dest="use_asa", action="store_false")
+        parser.set_defaults(use_asa=False)
+
+        parser.add_argument(
+            "--hse",
+            dest="use_hse",
+            action="store_true",
+            help="Use Half Sphere Exposure predicted using SPOT-1D. Default: %(default)s",
+        )
+        parser.add_argument("--no-hse", dest="use_hse", action="store_false")
+        parser.set_defaults(use_hse=False)
+
+        parser.add_argument(
+            "--torsion",
+            dest="use_torsion",
+            action="store_true",
+            help="Use Torsion angles predicted using SPOT-1D. Default: %(default)s",
+        )
+        parser.add_argument("--no-torsion", dest="use_torsion", action="store_false")
+        parser.set_defaults(use_torsion=False)
+
+        parser.add_argument(
+            "--cn13",
+            dest="use_cn13",
+            action="store_true",
+            help="Use Contact Number predicted using SPOT-1D. Default: %(default)s",
+        )
+        parser.add_argument("--no-cn13", dest="use_cn13", action="store_false")
+        parser.set_defaults(use_cn13=False)
+
+        parser.add_argument(
+            "--pl-dist",
             dest="use_pl_dist",
             action="store_true",
             help="Use distance between amino acid residues and ligand to improve loss function. Default: %(default)s",
         )
-        parser.add_argument(
-            "--no-protein-ligand-distance", dest="use_pl_dist", action="store_false"
-        )
+        parser.add_argument("--no-pl-dist", dest="use_pl_dist", action="store_false")
         parser.set_defaults(use_pl_dist=False)
 
         parser.add_argument(
             "--tape-embeddings",
             dest="use_tape_embeddings",
             action="store_true",
-            help="Use a BERT model on sequence to understand the language of proteins. Default: %(default)s",
+            help="Use already available embeddings of a BERT model on sequence. Default: %(default)s",
         )
         parser.add_argument(
             "--no-tape-embeddings", dest="use_tape_embeddings", action="store_false"
         )
         parser.set_defaults(use_tape_embeddings=False)
+
+        parser.add_argument(
+            "--tape-model",
+            dest="use_tape_model",
+            action="store_true",
+            help="Use a BERT model on sequence to understand the language of proteins. Default: %(default)s",
+        )
+        parser.add_argument(
+            "--no-tape-model", dest="use_tape_model", action="store_false"
+        )
+        parser.set_defaults(use_tape_model=False)
 
         return parser

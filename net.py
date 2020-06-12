@@ -5,8 +5,9 @@ import torch
 from torch.optim import SGD, Adam
 from torch.optim.lr_scheduler import ReduceLROnPlateau
 from torch.utils.data import DataLoader, Subset
+from tape import ProteinBertModel
 
-from datasets import Chen, Kalasanty
+from datasets import scPDB
 from metrics import (
     batch_loss,
     batch_metrics,
@@ -26,11 +27,15 @@ class Net(pl.LightningModule):
     def __init__(self, hparams):
         super().__init__()
         self.hparams = hparams
-        self.train_ds = Kalasanty(hparams)
+        self.num_cpus = 10
+        self.train_ds = scPDB(hparams)
         if hparams.run_tests:
-            self.test_ds = Chen()
+            self.test_ds = scPDB(hparams, test=True)
 
-        if hparams.use_tape_embeddings:
+        if hparams.use_tape_model:
+            self.tape_model = ProteinBertModel.from_pretrained("bert-base")
+
+        if hparams.use_tape_model or hparams.use_tape_embeddings:
             self.fc1 = torch.nn.Linear(768, 32)
             self.train_ds.input_size += 32
 
@@ -53,7 +58,11 @@ class Net(pl.LightningModule):
     def forward(self, features, lengths):
         # [Batch, hidden_sizes[-1], Max_length]
         output = features["X"]
-        if self.hparams.use_tape_embeddings:
+        if self.hparams.use_tape_model:
+            tmp = self.tape_model(features["seq"])[0]
+            tmp = self.fc1(tmp).transpose(1, 2)
+            output = torch.cat((output, tmp), 1)
+        elif self.hparams.use_tape_embeddings:
             tmp = self.fc1(features["seq"].transpose(1, 2)).transpose(1, 2)
             output = torch.cat((output, tmp), 1)
         output = self.embedding_model(output, lengths)
@@ -78,18 +87,20 @@ class Net(pl.LightningModule):
     def train_dataloader(self):
         return DataLoader(
             Subset(self.train_ds, self.train_ds.train_indices),
+            # self.train_ds,
             batch_size=self.hparams.batch_size,
             collate_fn=self.train_ds.collate_fn,
-            num_workers=10,
+            num_workers=self.num_cpus,
             shuffle=True,
         )
 
     def val_dataloader(self):
         return DataLoader(
             Subset(self.train_ds, self.train_ds.valid_indices),
+            # self.test_ds,
             batch_size=self.hparams.batch_size,
             collate_fn=self.train_ds.collate_fn,
-            num_workers=10,
+            num_workers=self.num_cpus,
             shuffle=False,
         )
 
@@ -98,7 +109,7 @@ class Net(pl.LightningModule):
             self.test_ds,
             batch_size=self.hparams.batch_size,
             collate_fn=self.train_ds.collate_fn,
-            num_workers=10,
+            num_workers=self.num_cpus,
             shuffle=False,
         )
 
@@ -197,7 +208,7 @@ class CGAN(pl.LightningModule):
         if self.hparams.use_tape_embeddings:
             tmp = self.fc1(features["seq"].transpose(1, 2)).transpose(1, 2)
             output = torch.cat((output, tmp), 1)
-        output = self.embedding_model(output, lengths)
+        output = self.net.embedding_model(output, lengths)
         # Return the embeddings as [Batch, Max_length, hidden_sizes[-1]]
         return output.transpose(1, 2)
 
@@ -227,21 +238,21 @@ class CGAN(pl.LightningModule):
 
     def training_step(self, batch, batch_idx, optimizer_idx):
         features, labels, lengths = batch
+        embed = self(features, lengths)
         mask = []
         for i, yt in enumerate(labels["y"]):
             mask.append(torch.eq(yt[: lengths[i]], 0))
 
         # Train Generator
         if optimizer_idx == 0:
-            self.embed = self(features, lengths)
-            generated_embed = self.generator(self.embed)
+            generated_embed = self.generator(embed)
             y_fake_pred = self.net.detector(generated_embed)
             g_pos_loss = batch_loss(
                 y_fake_pred, labels["y"], lengths, generator_pos_loss
             )
             if self.hparams.use_mse_loss:
                 g_mse_loss = batch_loss(
-                    generated_embed, self.embed, lengths, generator_mse_loss, mask=mask
+                    generated_embed, embed, lengths, generator_mse_loss, mask=mask
                 )
                 g_loss = g_pos_loss + self.hparams.generator_lambda * g_mse_loss
                 log_dict = {
@@ -259,8 +270,8 @@ class CGAN(pl.LightningModule):
 
         # Train detector
         if optimizer_idx == 1:
-            y_pred = self.net.detector(self.embed.detach())
-            generated_embed = self.generator(self.embed)
+            y_pred = self.net.detector(embed)
+            generated_embed = self.generator(embed).detach()
             net_loss = batch_loss(
                 y_pred,
                 labels["y"],

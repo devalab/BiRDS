@@ -45,10 +45,13 @@ def F1(cm):
     return (2 * cm["tp"]) / (2 * cm["tp"] + cm["fp"] + cm["fn"])
 
 
-def batch_metrics(y_preds, y_trues, lengths):
+def batch_metrics(y_preds, y_trues, lengths, is_logits=True, threshold=0.5):
     batch_size = len(lengths)
     for i in range(batch_size):
-        y_pred = (torch.sigmoid(y_preds[i, : lengths[i]]) > 0.5).bool()
+        y_pred = y_preds[i, : lengths[i]]
+        if is_logits:
+            y_pred = torch.sigmoid(y_pred)
+        y_pred = (y_pred > threshold).bool()
         y_true = y_trues[i, : lengths[i]].bool()
         cm = CM(y_pred, y_true)
         metrics = OrderedDict(

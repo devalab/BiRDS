@@ -6,7 +6,7 @@ from pytorch_lightning import Trainer
 from pytorch_lightning.callbacks import ModelCheckpoint
 from pytorch_lightning.loggers import TestTubeLogger
 
-from datasets import Kalasanty
+from datasets import scPDB
 from models import BiLSTM, ResNet  # noqa: F401
 from net import CGAN, Net
 
@@ -37,7 +37,8 @@ def main(hparams):
     }
     hparams = Namespace(**vars(hparams), **const_params)
     if not hparams.resume_from_checkpoint:
-        accumulate_grad_batches = {5: max(1, 16 // bs), 10: 64 // bs}
+        # accumulate_grad_batches = {5: max(1, 16 // bs), 10: 64 // bs}
+        accumulate_grad_batches = 1
     else:
         accumulate_grad_batches = 1
     print(hparams)
@@ -45,7 +46,7 @@ def main(hparams):
         hparams,
         logger=logger,
         checkpoint_callback=checkpoint_callback,
-        # val_check_interval=0.5,
+        val_check_interval=0.5,
         profiler=True,
         accumulate_grad_batches=accumulate_grad_batches,
         # track_grad_norm=2,
@@ -80,7 +81,7 @@ if __name__ == "__main__":
         "--seed", default=42, type=int, help="Training seed. Default: %(default)d"
     )
     trainer_group.add_argument(
-        "--gpus", default=1, type=int, help="Default: %(default)d"
+        "--gpus", default=-1, type=int, help="Default: %(default)d"
     )
     trainer_group.add_argument(
         "--batch-size",
@@ -135,7 +136,7 @@ if __name__ == "__main__":
 
     # Dataset Args
     dataset_group = parser.add_argument_group("Dataset")
-    dataset_group = Kalasanty.add_class_specific_args(dataset_group)
+    dataset_group = scPDB.add_class_specific_args(dataset_group)
 
     # Lightning Module Args
     net_group = parser.add_argument_group("Net")
