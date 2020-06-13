@@ -5,7 +5,6 @@ import torch
 from torch.optim import SGD, Adam
 from torch.optim.lr_scheduler import ReduceLROnPlateau
 from torch.utils.data import DataLoader, Subset
-from tape import ProteinBertModel
 
 from datasets import scPDB
 from metrics import (
@@ -32,13 +31,6 @@ class Net(pl.LightningModule):
         if hparams.run_tests:
             self.test_ds = scPDB(hparams, test=True)
 
-        if hparams.use_tape_model:
-            self.tape_model = ProteinBertModel.from_pretrained("bert-base")
-
-        if hparams.use_tape_model or hparams.use_tape_embeddings:
-            self.fc1 = torch.nn.Linear(768, 32)
-            self.train_ds.input_size += 32
-
         if hparams.embedding_model == "bilstm":
             self.model_class = BiLSTM
         else:
@@ -55,17 +47,9 @@ class Net(pl.LightningModule):
         else:
             self.loss_func = weighted_bce_loss
 
-    def forward(self, features, lengths):
+    def forward(self, X, lengths):
         # [Batch, hidden_sizes[-1], Max_length]
-        output = features["X"]
-        if self.hparams.use_tape_model:
-            tmp = self.tape_model(features["seq"])[0]
-            tmp = self.fc1(tmp).transpose(1, 2)
-            output = torch.cat((output, tmp), 1)
-        elif self.hparams.use_tape_embeddings:
-            tmp = self.fc1(features["seq"].transpose(1, 2)).transpose(1, 2)
-            output = torch.cat((output, tmp), 1)
-        output = self.embedding_model(output, lengths)
+        output = self.embedding_model(X, lengths)
 
         # [Batch, hidden_sizes[-1], Max_length] -> [Batch, Max_length]
         output = output.transpose(1, 2)
@@ -117,7 +101,7 @@ class Net(pl.LightningModule):
         optimizer = Adam(self.parameters(), lr=self.hparams.net_lr)
         scheduler = {
             "scheduler": ReduceLROnPlateau(
-                optimizer, mode="max", patience=5, verbose=True
+                optimizer, mode="max", patience=4, verbose=True
             ),
             "monitor": "val_mcc",
         }
@@ -126,8 +110,9 @@ class Net(pl.LightningModule):
     # learning rate warm-up
     def optimizer_step(self, curr_epoch, batch_nb, optim, optim_idx, soc=None):
         # warm up lr
-        if self.trainer.global_step < 500:
-            lr_scale = min(1.0, float(self.trainer.global_step + 1) / 500.0)
+        warm_up_steps = float(16384 // self.hparams.batch_size)
+        if self.trainer.global_step < warm_up_steps:
+            lr_scale = min(1.0, float(self.trainer.global_step + 1) / warm_up_steps)
             for pg in optim.param_groups:
                 pg["lr"] = lr_scale * self.hparams.net_lr
 
@@ -135,22 +120,35 @@ class Net(pl.LightningModule):
         optim.zero_grad()
 
     def training_step(self, batch, batch_idx):
-        features, labels, lengths = batch
-        y_pred = self(features, lengths)
-        if self.hparams.use_pl_dist:
-            kwargs = {"pl_dist": labels["pl_dist"]}
-        else:
-            kwargs = {"pos_weight": self.train_ds.pos_weight}
-        loss = batch_loss(y_pred, labels["y"], lengths, self.loss_func, **kwargs)
+        data, meta = batch
+        y_pred = self(data["feature"], meta["length"])
+        loss = batch_loss(
+            y_pred,
+            data["label"],
+            meta["length"],
+            self.loss_func,
+            pos_weight=self.train_ds.pos_weight,
+        )
         return {"loss": loss, "log": {"loss": loss}}
 
     def val_test_step(self, batch, batch_idx, prefix):
-        features, labels, lengths = batch
-        y_pred = self(features, lengths)
+        data, meta = batch
+        y_pred = self(data["feature"], meta["length"])
         metrics = OrderedDict(
-            {prefix + "loss": batch_loss(y_pred, labels["y"], lengths, self.loss_func)}
+            {
+                prefix
+                + "loss": batch_loss(
+                    y_pred, data["label"], meta["length"], self.loss_func
+                )
+            }
         )
-        for key, val in batch_metrics(y_pred, labels["y"], lengths).items():
+        for key, val in batch_metrics(
+            y_pred,
+            data["label"],
+            meta["length"],
+            logger=self.logger,
+            epoch=self.current_epoch,
+        ).items():
             metrics[prefix + key] = val
         return metrics
 
@@ -181,7 +179,7 @@ class Net(pl.LightningModule):
         )
         parser.add_argument(
             "--net-lr",
-            default=0.01,
+            default=0.08,
             type=float,
             help="Main Net Learning Rate. Default: %(default)f",
         )
@@ -202,13 +200,9 @@ class CGAN(pl.LightningModule):
         self.net = net
         self.generator = CGenerator(self.net.embedding_dim, hparams)
 
-    def forward(self, features, lengths):
+    def forward(self, X, lengths):
         # [Batch, hidden_sizes[-1], Max_length]
-        output = features["X"]
-        if self.hparams.use_tape_embeddings:
-            tmp = self.fc1(features["seq"].transpose(1, 2)).transpose(1, 2)
-            output = torch.cat((output, tmp), 1)
-        output = self.net.embedding_model(output, lengths)
+        output = self.net.embedding_model(X, lengths)
         # Return the embeddings as [Batch, Max_length, hidden_sizes[-1]]
         return output.transpose(1, 2)
 
@@ -237,22 +231,26 @@ class CGAN(pl.LightningModule):
         return [opt_g, opt_d]
 
     def training_step(self, batch, batch_idx, optimizer_idx):
-        features, labels, lengths = batch
-        embed = self(features, lengths)
+        data, meta = batch
+        embed = self(data["feature"], meta["length"])
         mask = []
-        for i, yt in enumerate(labels["y"]):
-            mask.append(torch.eq(yt[: lengths[i]], 0))
+        for i, yt in enumerate(data["label"]):
+            mask.append(torch.eq(yt[: meta["length"][i]], 0))
 
         # Train Generator
         if optimizer_idx == 0:
             generated_embed = self.generator(embed)
             y_fake_pred = self.net.detector(generated_embed)
             g_pos_loss = batch_loss(
-                y_fake_pred, labels["y"], lengths, generator_pos_loss
+                y_fake_pred, data["label"], meta["length"], generator_pos_loss
             )
             if self.hparams.use_mse_loss:
                 g_mse_loss = batch_loss(
-                    generated_embed, embed, lengths, generator_mse_loss, mask=mask
+                    generated_embed,
+                    embed,
+                    meta["length"],
+                    generator_mse_loss,
+                    mask=mask,
                 )
                 g_loss = g_pos_loss + self.hparams.generator_lambda * g_mse_loss
                 log_dict = {
@@ -274,15 +272,15 @@ class CGAN(pl.LightningModule):
             generated_embed = self.generator(embed).detach()
             net_loss = batch_loss(
                 y_pred,
-                labels["y"],
-                lengths,
+                data["label"],
+                meta["length"],
                 self.net.loss_func,
                 pos_weight=self.net.train_ds.pos_weight,
             )
             if self.hparams.use_margin_loss:
                 y_fake_pred = self.net.detector(generated_embed)
                 mar_loss = batch_loss(
-                    y_fake_pred, labels["y"], lengths, detector_margin_loss
+                    y_fake_pred, data["label"], meta["length"], detector_margin_loss
                 )
                 d_loss = net_loss + self.hparams.detector_lambda * mar_loss
                 log_dict = {

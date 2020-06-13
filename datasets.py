@@ -5,14 +5,12 @@ from collections import defaultdict
 from glob import glob
 
 import numpy as np
-import torch
-from tape import TAPETokenizer
+from torch import from_numpy
 from torch.utils.data import Dataset
 from tqdm import tqdm
 
 AMINO_ACIDS = "XACDEFGHIKLMNPQRSTVWY"
 AA_DICT = defaultdict(lambda: 0, {aa: idx for idx, aa in enumerate(AMINO_ACIDS)})
-tokenizer = TAPETokenizer(vocab="iupac")
 
 
 class scPDB(Dataset):
@@ -76,13 +74,12 @@ class scPDB(Dataset):
 
         if not test:
             if hparams.compute_pos_weight:
-                # self.pos_weight = self.compute_pos_weight()
-                self.pos_weight = [6507812 / 475440]
+                self.pos_weight = self.compute_pos_weight()
 
             self.train_indices = [self.pi_to_index[pi] for pi in self.train_fold]
             self.valid_indices = [self.pi_to_index[pi] for pi in self.valid_fold]
 
-        self.input_size = self[0][0]["X"].shape[0]
+        self.input_size = self[0][0]["feature"].shape[0]
 
     def get_sequences_and_labels(self):
         sequences = {}
@@ -109,7 +106,7 @@ class scPDB(Dataset):
         for file in tqdm(sorted(tmp)):
             pis, chain = file.split("/")[-2:]
             chain = chain[-5:-4]
-            mapping[pis + "/" + chain] = np.load(file)
+            mapping[pis + "/" + chain] = np.load(file).astype(np.float32)
         return mapping
 
     def get_fold(self):
@@ -142,19 +139,18 @@ class scPDB(Dataset):
         # Taking the first structure available
         pis = self.pi_to_pis[pi][0]
         # For all available chains
-        X = {}
-        y = {}
+        data = {}
+        meta = {}
         for i, pisc in enumerate(self.pis_to_pisc[pis]):
+            _data = {}
+            _meta = {}
+
             mpisc = self.pisc_to_mpisc[pisc]
             sequence = self.sequences[pisc]
-            if self.hparams.use_tape_model:
-                tape = np.array(tokenizer.encode(sequence))
-            elif self.hparams.use_tape_embeddings:
-                tape = np.load(
-                    os.path.join(
-                        self.preprocessed_dir, mpisc[:-2], "tape_" + mpisc[-1] + ".npy"
-                    )
-                )
+            _meta["pisc"] = [pisc]
+            _meta["mpisc"] = [mpisc]
+            _meta["sequence"] = [sequence]
+
             oh = np.array([np.eye(len(AMINO_ACIDS))[AA_DICT[aa]] for aa in sequence]).T
             pe = np.arange(1, len(sequence) + 1).reshape((1, -1)) / len(sequence)
             inputs = [oh, pe]
@@ -168,9 +164,9 @@ class scPDB(Dataset):
                 inputs.append(self.solv[mpisc])
 
             if self.hparams.use_ss3:
-                inputs.append(self.spot_ss3[mpisc])
+                inputs.append(self.spot_ss3[mpisc] / 100.0)
             if self.hparams.use_ss8:
-                inputs.append(self.spot_ss8[mpisc])
+                inputs.append(self.spot_ss8[mpisc] / 100.0)
             if self.hparams.use_asa:
                 # RSA = ASA / MaxASA
                 tmp = self.spot_asa[mpisc]
@@ -188,25 +184,18 @@ class scPDB(Dataset):
                 # Normalize or convert to sin and cos
                 inputs.append(self.spot_torsion[mpisc] / 360.0)
 
-            feature = np.vstack(inputs).astype(np.float32)
-            label = self.labels[pisc].astype(np.float32)
-            # Add 0s at start and 1s at end to give an idea of different chains
-            ln = feature.shape[0]
-            feature = np.hstack((np.zeros((ln, 1)), feature, np.ones((ln, 1)))).astype(
-                np.float32
-            )
-            label = np.hstack(([0], label, [0])).astype(np.float32)
+            _data["feature"] = np.vstack(inputs).astype(np.float32)
+            _data["label"] = self.labels[pisc].astype(np.float32)
+
             if i == 0:
-                if self.hparams.use_tape_model or self.hparams.use_tape_embeddings:
-                    X["seq"] = tape
-                X["X"] = feature
-                y["y"] = label
+                data = _data
+                meta = _meta
             else:
-                if self.hparams.use_tape_model or self.hparams.use_tape_embeddings:
-                    X["seq"] = np.hstack((X["seq"], tape))
-                X["X"] = np.hstack((X["X"], feature))
-                y["y"] = np.hstack((y["y"], label))
-        return X, y
+                for key in _data:
+                    data[key] = np.hstack((data[key], _data[key]))
+                for key in _meta:
+                    meta[key] += _meta[key]
+        return data, meta
 
     def __len__(self):
         return len(self.dataset)
@@ -214,32 +203,30 @@ class scPDB(Dataset):
     @staticmethod
     # A collate function to merge samples into a minibatch, will be used by DataLoader
     def collate_fn(samples):
-        # samples is a list of (X, y) of size MINIBATCH_SIZE
+        # samples is a list of tuples: len(samples) = Batch Size
+        # Each tuple is of the form (data, meta)
         # Sort the samples in decreasing order of their length
-        # x[1] will be y of each sample
-        samples.sort(key=lambda x: len(x[1]["y"]), reverse=True)
-        batch_size = len(samples)
+        samples.sort(key=lambda sample: len(sample[0]["label"]), reverse=True)
+        bs = len(samples)
 
-        lengths = [0] * batch_size
-        for i, (tX, ty) in enumerate(samples):
-            lengths[i] = len(ty["y"])
+        meta = {}
+        meta["length"] = [0] * bs
+        for i, (d, m) in enumerate(samples):
+            meta["length"][i] = len(d["label"])
+            if i == 0:
+                for key in m:
+                    meta[key] = []
+            for key, val in m.items():
+                meta[key] += [val]
 
-        X = {}
-        fX = samples[0][0]
-        for key in fX.keys():
-            X[key] = np.zeros((batch_size, *fX[key].shape), dtype=fX[key].dtype)
-            for i, (tX, ty) in enumerate(samples):
-                X[key][i, ..., : lengths[i]] = tX[key]
-            X[key] = torch.from_numpy(X[key])
-
-        y = {}
-        fy = samples[0][1]
-        for key in fy.keys():
-            y[key] = np.zeros((batch_size, *fy[key].shape), dtype=fy[key].dtype)
-            for i, (tX, ty) in enumerate(samples):
-                y[key][i, ..., : lengths[i]] = ty[key]
-            y[key] = torch.from_numpy(y[key])
-        return X, y, lengths
+        data = {}
+        fdata = samples[0][0]
+        for key in fdata.keys():
+            data[key] = np.zeros((bs, *fdata[key].shape), dtype=fdata[key].dtype)
+            for i, (d, _) in enumerate(samples):
+                data[key][i, ..., : meta["length"][i]] = d[key]
+            data[key] = from_numpy(data[key])
+        return data, meta
 
     @staticmethod
     def add_class_specific_args(parser):
@@ -357,36 +344,5 @@ class scPDB(Dataset):
         )
         parser.add_argument("--no-cn13", dest="use_cn13", action="store_false")
         parser.set_defaults(use_cn13=False)
-
-        parser.add_argument(
-            "--pl-dist",
-            dest="use_pl_dist",
-            action="store_true",
-            help="Use distance between amino acid residues and ligand to improve loss function. Default: %(default)s",
-        )
-        parser.add_argument("--no-pl-dist", dest="use_pl_dist", action="store_false")
-        parser.set_defaults(use_pl_dist=False)
-
-        parser.add_argument(
-            "--tape-embeddings",
-            dest="use_tape_embeddings",
-            action="store_true",
-            help="Use already available embeddings of a BERT model on sequence. Default: %(default)s",
-        )
-        parser.add_argument(
-            "--no-tape-embeddings", dest="use_tape_embeddings", action="store_false"
-        )
-        parser.set_defaults(use_tape_embeddings=False)
-
-        parser.add_argument(
-            "--tape-model",
-            dest="use_tape_model",
-            action="store_true",
-            help="Use a BERT model on sequence to understand the language of proteins. Default: %(default)s",
-        )
-        parser.add_argument(
-            "--no-tape-model", dest="use_tape_model", action="store_false"
-        )
-        parser.set_defaults(use_tape_model=False)
 
         return parser

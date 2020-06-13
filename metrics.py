@@ -1,9 +1,46 @@
 from collections import OrderedDict
 
 import torch
+import numpy as np
+import matplotlib.pyplot as plt
+import itertools
 from torch.nn.functional import binary_cross_entropy_with_logits, mse_loss
 
 SMOOTH = 1e-6
+
+
+def plot_confusion_matrix(cm, class_names):
+    """
+    Returns a matplotlib figure containing the plotted confusion matrix.
+
+    Args:
+    cm (array, shape = [n, n]): a confusion matrix of integer classes
+    class_names (array, shape = [n]): String names of the integer classes
+    """
+    for key in cm:
+        cm[key] = cm[key].cpu().numpy()
+    cm = np.array([[cm["tn"], cm["fp"]], [cm["fn"], cm["tp"]]])
+    figure = plt.figure(figsize=(8, 8))
+    plt.imshow(cm, interpolation="nearest", cmap=plt.cm.Blues)
+    plt.title("Confusion matrix")
+    plt.colorbar()
+    tick_marks = np.arange(len(class_names))
+    plt.xticks(tick_marks, class_names, rotation=45)
+    plt.yticks(tick_marks, class_names)
+
+    # Normalize the confusion matrix.
+    cm = np.around(cm.astype("float") / cm.sum(axis=1)[:, np.newaxis], decimals=2)
+
+    # Use white text if squares are dark; otherwise black.
+    threshold = cm.max() / 2.0
+    for i, j in itertools.product(range(cm.shape[0]), range(cm.shape[1])):
+        color = "white" if cm[i, j] > threshold else "black"
+        plt.text(j, i, cm[i, j], horizontalalignment="center", color=color)
+
+    plt.tight_layout()
+    plt.ylabel("True label")
+    plt.xlabel("Predicted label")
+    return figure
 
 
 def CM(y_pred, y_true):
@@ -43,35 +80,6 @@ def PRECISION(cm):
 
 def F1(cm):
     return (2 * cm["tp"]) / (2 * cm["tp"] + cm["fp"] + cm["fn"])
-
-
-def batch_metrics(y_preds, y_trues, lengths, is_logits=True, threshold=0.5):
-    batch_size = len(lengths)
-    for i in range(batch_size):
-        y_pred = y_preds[i, : lengths[i]]
-        if is_logits:
-            y_pred = torch.sigmoid(y_pred)
-        y_pred = (y_pred > threshold).bool()
-        y_true = y_trues[i, : lengths[i]].bool()
-        cm = CM(y_pred, y_true)
-        metrics = OrderedDict(
-            {
-                "mcc": MCC(cm),
-                "acc": ACCURACY(cm),
-                "iou": IOU(cm),
-                "precision": PRECISION(cm),
-                "recall": RECALL(cm),
-                "f1": F1(cm),
-            }
-        )
-        if i == 0:
-            running_metrics = metrics
-            continue
-        for key in metrics:
-            running_metrics[key] += metrics[key]
-    for key in running_metrics:
-        running_metrics[key] /= batch_size
-    return running_metrics
 
 
 def weighted_focal_loss(y_pred, y_true, gamma=2.0, pos_weight=[1], **kwargs):
@@ -122,16 +130,41 @@ def generator_mse_loss(generated_embed, embed, mask, batch_idx, **kwargs):
     return mse_loss(generated_embed, embed, reduction="mean")
 
 
-def batch_loss(y_preds, y_trues, lengths, loss_func, **kwargs):
+def batch_work(y_preds, y_trues, lengths):
     batch_size = len(lengths)
-    loss = 0.0
+    indices = []
     for i in range(batch_size):
-        loss += loss_func(
-            y_preds[i, : lengths[i]],
-            y_trues[i, : lengths[i]],
-            batch_idx=i,
-            lengths=lengths,
-            **kwargs
-        )
-    loss /= batch_size
+        indices += [i * lengths[0] + el for el in range(lengths[i])]
+    indices = torch.tensor(indices).to(y_trues.device)
+    return y_preds.take(indices), y_trues.take(indices)
+
+
+def batch_metrics(
+    y_preds, y_trues, lengths, is_logits=True, threshold=0.5, logger=None, epoch=0
+):
+    y_preds, y_trues = batch_work(y_preds, y_trues, lengths)
+    if is_logits:
+        y_preds = torch.sigmoid(y_preds)
+    y_preds = (y_preds > threshold).bool()
+    y_trues = y_trues.bool()
+    cm = CM(y_preds, y_trues)
+    metrics = OrderedDict(
+        {
+            "mcc": MCC(cm),
+            "acc": ACCURACY(cm),
+            "iou": IOU(cm),
+            "precision": PRECISION(cm),
+            "recall": RECALL(cm),
+            "f1": F1(cm),
+        }
+    )
+    if logger:
+        figure = plot_confusion_matrix(cm, ["NBR", "BR"])
+        logger.experiment.add_figure("Confusion Matrix", figure, global_step=epoch)
+    return metrics
+
+
+def batch_loss(y_preds, y_trues, lengths, loss_func, **kwargs):
+    y_preds, y_trues = batch_work(y_preds, y_trues, lengths)
+    loss = loss_func(y_preds, y_trues, **kwargs)
     return loss
