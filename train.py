@@ -14,7 +14,7 @@ from net import CGAN, Net
 class MyModelCheckpoint(ModelCheckpoint):
     def format_checkpoint_name(self, epoch, metrics, ver=None):
         if self.filename == "{epoch}":
-            self.filename = "{epoch}-{val_mcc:.3f}-{val_acc:.3f}-{val_f1:.3f}"
+            self.filename = "{epoch}-{v_mcc:.3f}-{v_acc:.3f}-{v_f1:.3f}"
         return super().format_checkpoint_name(epoch, metrics, ver)
 
 
@@ -24,7 +24,7 @@ def main(hparams):
     save_dir = os.getenv("HOME")
     logger = TestTubeLogger(save_dir=save_dir, name="logs", create_git_tag=True)
     checkpoint_callback = MyModelCheckpoint(
-        monitor="val_mcc", verbose=True, save_top_k=3, mode="max",
+        monitor="v_mcc", verbose=True, save_top_k=3, mode="max",
     )
     bs = hparams.batch_size
     if hparams.progress_bar_refresh_rate is None:
@@ -47,8 +47,10 @@ def main(hparams):
         logger=logger,
         checkpoint_callback=checkpoint_callback,
         val_check_interval=0.5,
+        # num_sanity_val_steps=60,
         profiler=True,
         accumulate_grad_batches=accumulate_grad_batches,
+        deterministic=True,
         # track_grad_norm=2,
         # fast_dev_run=True,
         # overfit_pct=0.05,
@@ -93,7 +95,7 @@ if __name__ == "__main__":
     trainer_group.add_argument(
         "--net-epochs",
         metavar="EPOCHS",
-        default=50,
+        default=128,
         type=int,
         help="Main Net epochs. Default: %(default)d",
     )

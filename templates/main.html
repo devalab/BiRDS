@@ -1,0 +1,30 @@
+<!DOCTYPE html>
+<html>
+
+<head>
+    <title>Binding Site Predictions</title>
+    <meta charset="utf-8">
+    <script type="text/javascript" src="js/JSmol.min.js"></script>
+    <script type="text/javascript" src="js/Jmol2.js"></script>
+</head>
+
+<body>
+    <span id=mydiv></span>
+    <script type=text/javascript>
+    jmolInitialize("jmol"); jmolSetAppletColor("white");
+    script = "load " + "{{protein}}" + " ;"
+    + " restrict water; select protein; color [xFFFFC0]; cartoon;"
+    + " {{selections}}"
+    + " spacefill 25%;  wireframe 50;"
+    + " load append " + "{{ligand}}" + " ;" 
+    + " select hetero; spacefill 95%; frame all;"
+    console.log(script);
+    jmolApplet(850, script);
+    document.write("<br>");
+    jmolButton("Reset","Reset to initial orientation");
+    jmolCheckbox("spin on", "spin off", "spin", "checked=false");jmolBr();
+    </script>
+    <span id=btns></span>
+</body>
+
+</html>

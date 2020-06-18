@@ -10,6 +10,7 @@ from datasets import scPDB
 from metrics import (
     batch_loss,
     batch_metrics,
+    make_figure,
     detector_margin_loss,
     generator_mse_loss,
     generator_pos_loss,
@@ -57,16 +58,16 @@ class Net(pl.LightningModule):
 
         return output
 
-    def on_after_backward(self):
-        # example to inspect gradient information in tensorboard
-        if self.trainer.global_step % 200 == 0:  # don't make the tf file huge
-            params = self.state_dict()
-            for k, v in params.items():
-                grads = v
-                name = k
-                self.logger.experiment.add_histogram(
-                    tag=name, values=grads, global_step=self.trainer.global_step
-                )
+    # def on_after_backward(self):
+    #     # example to inspect gradient information in tensorboard
+    #     if self.trainer.global_step % 200 == 0:  # don't make the tf file huge
+    #         params = self.state_dict()
+    #         for k, v in params.items():
+    #             grads = v
+    #             name = k
+    #             self.logger.experiment.add_histogram(
+    #                 tag=name, values=grads, global_step=self.trainer.global_step
+    #             )
 
     def train_dataloader(self):
         return DataLoader(
@@ -103,7 +104,7 @@ class Net(pl.LightningModule):
             "scheduler": ReduceLROnPlateau(
                 optimizer, mode="max", patience=4, verbose=True
             ),
-            "monitor": "val_mcc",
+            "monitor": "v_mcc",
         }
         return [optimizer], [scheduler]
 
@@ -144,25 +145,43 @@ class Net(pl.LightningModule):
         )
         for key, val in batch_metrics(
             y_pred,
-            data["label"],
-            meta["length"],
-            logger=self.logger,
-            epoch=self.current_epoch,
+            data,
+            meta,
+            # logger=self.logger,
+            # epoch=self.current_epoch,
         ).items():
-            metrics[prefix + key] = val
+            if key.startswith("f_"):
+                metrics["f_" + prefix + key[2:]] = val
+            else:
+                metrics[prefix + key] = val
         return metrics
 
     def validation_step(self, batch, batch_idx):
-        return self.val_test_step(batch, batch_idx, "val_")
+        return self.val_test_step(batch, batch_idx, "v_")
 
     def validation_epoch_end(self, outputs):
         avg_metrics = OrderedDict(
-            {key: torch.stack([el[key] for el in outputs]).mean() for key in outputs[0]}
+            {
+                key: torch.stack([el[key] for el in outputs]).mean()
+                for key in outputs[0]
+                if not key.startswith("f_")
+            }
         )
+        figure_metrics = OrderedDict(
+            {
+                key[2:]: torch.stack(sum([el[key] for el in outputs], [])).cpu().numpy()
+                for key in outputs[0]
+                if key.startswith("f_")
+            }
+        )
+        for key, val in figure_metrics.items():
+            self.logger.experiment.add_figure(
+                key, make_figure(key[2:], val), self.current_epoch
+            )
         return {**avg_metrics, "progress_bar": avg_metrics, "log": avg_metrics}
 
     def test_step(self, batch, batch_idx):
-        return self.val_test_step(batch, batch_idx, "test_")
+        return self.val_test_step(batch, batch_idx, "t_")
 
     def test_epoch_end(self, outputs):
         return self.validation_epoch_end(outputs)
@@ -179,7 +198,7 @@ class Net(pl.LightningModule):
         )
         parser.add_argument(
             "--net-lr",
-            default=0.08,
+            default=0.01,
             type=float,
             help="Main Net Learning Rate. Default: %(default)f",
         )
@@ -297,13 +316,13 @@ class CGAN(pl.LightningModule):
             )
 
     def validation_step(self, batch, batch_idx):
-        return self.net.val_test_step(batch, batch_idx, "val_")
+        return self.net.val_test_step(batch, batch_idx, "v_")
 
     def validation_epoch_end(self, outputs):
         return self.net.validation_epoch_end(outputs)
 
     def test_step(self, batch, batch_idx):
-        return self.net.val_test_step(batch, batch_idx, "test_")
+        return self.net.val_test_step(batch, batch_idx, "t_")
 
     def test_epoch_end(self, outputs):
         return self.net.validation_epoch_end(outputs)

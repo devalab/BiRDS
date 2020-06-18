@@ -1,15 +1,19 @@
+import itertools
 from collections import OrderedDict
 
-import torch
-import numpy as np
 import matplotlib.pyplot as plt
-import itertools
+import numpy as np
+import torch
+
+from torch_cluster import grid_cluster, fps
 from torch.nn.functional import binary_cross_entropy_with_logits, mse_loss
+
+# Utils
 
 SMOOTH = 1e-6
 
 
-def plot_confusion_matrix(cm, class_names):
+def confusion_matrix_figure(cm, class_names):
     """
     Returns a matplotlib figure containing the plotted confusion matrix.
 
@@ -17,9 +21,6 @@ def plot_confusion_matrix(cm, class_names):
     cm (array, shape = [n, n]): a confusion matrix of integer classes
     class_names (array, shape = [n]): String names of the integer classes
     """
-    for key in cm:
-        cm[key] = cm[key].cpu().numpy()
-    cm = np.array([[cm["tn"], cm["fp"]], [cm["fn"], cm["tp"]]])
     figure = plt.figure(figsize=(8, 8))
     plt.imshow(cm, interpolation="nearest", cmap=plt.cm.Blues)
     plt.title("Confusion matrix")
@@ -34,13 +35,42 @@ def plot_confusion_matrix(cm, class_names):
     # Use white text if squares are dark; otherwise black.
     threshold = cm.max() / 2.0
     for i, j in itertools.product(range(cm.shape[0]), range(cm.shape[1])):
-        color = "white" if cm[i, j] > threshold else "black"
+        color = "red" if cm[i, j] > threshold else "black"
         plt.text(j, i, cm[i, j], horizontalalignment="center", color=color)
 
     plt.tight_layout()
     plt.ylabel("True label")
     plt.xlabel("Predicted label")
     return figure
+
+
+def dcc_figure(values):
+    figure = plt.figure(figsize=(8, 8))
+    x = np.linspace(0, 20, 1000)
+    y = np.array([(values <= el).sum() / len(values) * 100 for el in x])
+    plt.plot(x, y)
+    plt.xticks(np.arange(0, 21, 1))
+    plt.yticks(np.arange(0, 101, 5))
+    plt.title("Distance to the center of the binding site")
+    plt.ylabel("Success Rate")
+    plt.xlabel("Distance to binding site")
+    return figure
+
+
+def make_figure(name, values):
+    if name == "cm":
+        cm = [[0, 0], [0, 0]]
+        for value in values:
+            cm[0][0] += value[0]
+            cm[0][1] += value[1]
+            cm[1][0] += value[2]
+            cm[1][1] += value[3]
+        return confusion_matrix_figure(np.array(cm), ["NBR", "BR"])
+    if name == "dcc":
+        return dcc_figure(values)
+
+
+# Validation Metrics
 
 
 def CM(y_pred, y_true):
@@ -80,6 +110,87 @@ def PRECISION(cm):
 
 def F1(cm):
     return (2 * cm["tp"]) / (2 * cm["tp"] + cm["fp"] + cm["fn"])
+
+
+def DCC(y_pred, y_true, data, meta):
+    idx = 0
+    dcc = []
+    for i, length in enumerate(meta["length"]):
+        coords = data["coords"][i, ..., :length]
+        true_pocket = coords[:, y_true[idx : idx + length]]
+        true_pocket = true_pocket[:, ~torch.isinf(true_pocket[0])]
+        pred_pocket = coords[:, y_pred[idx : idx + length]]
+        pred_pocket = pred_pocket[:, ~torch.isinf(pred_pocket[0])]
+        if len(pred_pocket) == 0:
+            dcc += [torch.tensor(100.0).float().to(y_true.device)]
+            idx += length
+            continue
+        true_centroid = torch.mean(true_pocket, dim=1)
+        pred_centroid = torch.mean(pred_pocket, dim=1)
+        dcc += [torch.norm(true_centroid - pred_centroid)]
+        idx += length
+    return dcc
+
+
+def GRID(y_pred, y_true, data, meta):
+    idx = 0
+    out = 0
+    grid_size = torch.Tensor([40.0, 40.0, 40.0]).to(y_true.device)
+    for i, length in enumerate(meta["length"]):
+        coords = data["coords"][i, ..., :length]
+        true_pocket = coords[:, y_true[idx : idx + length]]
+        true_pocket = true_pocket[:, ~torch.isinf(true_pocket[0])].t()
+        true_centroid = torch.mean(true_pocket, dim=0)
+        pred_pocket = coords[:, y_pred[idx : idx + length]]
+        pred_pocket = pred_pocket[:, ~torch.isinf(pred_pocket[0])].t()
+        if len(pred_pocket) == 0:
+            idx += length
+            continue
+        pred_labels = grid_cluster(pred_pocket, grid_size)
+        max_cluster = []
+        for val in pred_labels.unique():
+            cluster = (pred_labels == val).nonzero()
+            if len(max_cluster) < len(cluster):
+                max_cluster = cluster
+        pred_centroid = torch.mean(pred_pocket[max_cluster], dim=0)
+        # tmp = true_labels.unique()
+        # if len(tmp) != 1:
+        #     print(meta["pisc"][i], len(tmp))
+        if torch.norm(true_centroid - pred_centroid) < 8.0:
+            out += 1
+        idx += length
+    return torch.tensor(float(out) / len(meta["length"])).float().to(y_true.device)
+
+
+def FPS(y_pred, y_true, data, meta):
+    idx = 0
+    out = 0
+    for i, length in enumerate(meta["length"]):
+        coords = data["coords"][i, ..., :length]
+        true_pocket = coords[:, y_true[idx : idx + length]]
+        true_pocket = true_pocket[:, ~torch.isinf(true_pocket[0])].t()
+        pred_pocket = coords[:, y_pred[idx : idx + length]]
+        pred_pocket = pred_pocket[:, ~torch.isinf(pred_pocket[0])].t()
+        if len(pred_pocket) == 0:
+            idx += length
+            continue
+        true_fp = fps(true_pocket, ratio=0.5, random_start=False)
+        true_neighbours = true_pocket[
+            torch.ones_like(true_pocket[:, 0]).bool().scatter_(0, true_fp, 0.0)
+        ]
+        true_centroid = torch.mean(true_neighbours, dim=0)
+        pred_fp = fps(pred_pocket, ratio=0.5, random_start=False)
+        pred_neighbours = pred_pocket[
+            torch.ones_like(pred_pocket[:, 0]).bool().scatter_(0, pred_fp, 0.0)
+        ]
+        pred_centroid = torch.mean(pred_neighbours, dim=0)
+        if torch.norm(true_centroid - pred_centroid) < 8.0:
+            out += 1
+        idx += length
+    return torch.tensor(out / len(meta["length"])).to(y_true.device)
+
+
+# Loss Functions
 
 
 def weighted_focal_loss(y_pred, y_true, gamma=2.0, pos_weight=[1], **kwargs):
@@ -139,32 +250,45 @@ def batch_work(y_preds, y_trues, lengths):
     return y_preds.take(indices), y_trues.take(indices)
 
 
-def batch_metrics(
-    y_preds, y_trues, lengths, is_logits=True, threshold=0.5, logger=None, epoch=0
-):
-    y_preds, y_trues = batch_work(y_preds, y_trues, lengths)
+def batch_metrics(y_preds, data, meta, is_logits=True, threshold=0.5):
+    y_preds, y_trues = batch_work(y_preds, data["label"], meta["length"])
     if is_logits:
         y_preds = torch.sigmoid(y_preds)
     y_preds = (y_preds > threshold).bool()
     y_trues = y_trues.bool()
+    # top_cluster(y_preds, y_trues, data, meta)
+    # return {}
     cm = CM(y_preds, y_trues)
     metrics = OrderedDict(
         {
             "mcc": MCC(cm),
             "acc": ACCURACY(cm),
+            "fps": FPS(y_preds, y_trues, data, meta),
+            "grid": GRID(y_preds, y_trues, data, meta),
             "iou": IOU(cm),
             "precision": PRECISION(cm),
             "recall": RECALL(cm),
             "f1": F1(cm),
+            "f_cm": [torch.stack([cm["tn"], cm["fp"], cm["fn"], cm["tp"]])],
+            "f_dcc": DCC(y_preds, y_trues, data, meta),
         }
     )
-    if logger:
-        figure = plot_confusion_matrix(cm, ["NBR", "BR"])
-        logger.experiment.add_figure("Confusion Matrix", figure, global_step=epoch)
     return metrics
+
+
+# def num_ones(y_preds, y_trues, **kwargs):
+#     pred_ones = (torch.sigmoid(y_preds) > 0.5).bool().sum()
+#     true_ones = y_trues.bool().sum()
+#     return torch.abs(true_ones - pred_ones).float() / true_ones
 
 
 def batch_loss(y_preds, y_trues, lengths, loss_func, **kwargs):
     y_preds, y_trues = batch_work(y_preds, y_trues, lengths)
     loss = loss_func(y_preds, y_trues, **kwargs)
     return loss
+
+
+# def train_end_metrics():
+#     metrics = {
+
+#     }

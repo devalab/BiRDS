@@ -374,7 +374,7 @@ class Net(pl.LightningModule):
             "scheduler": ReduceLROnPlateau(
                 optimizer, mode="max", patience=5, verbose=True
             ),
-            "monitor": "val_mcc",
+            "monitor": "v_mcc",
         }
         return [optimizer], [scheduler]
 
@@ -425,7 +425,7 @@ class Net(pl.LightningModule):
         return metrics
 
     def validation_step(self, batch, batch_idx):
-        return self.val_test_step(batch, batch_idx, "val_")
+        return self.val_test_step(batch, batch_idx, "v_")
 
     def validation_epoch_end(self, outputs):
         avg_metrics = OrderedDict(
@@ -434,7 +434,7 @@ class Net(pl.LightningModule):
         return {**avg_metrics, "progress_bar": avg_metrics, "log": avg_metrics}
 
     def test_step(self, batch, batch_idx):
-        return self.val_test_step(batch, batch_idx, "test_")
+        return self.val_test_step(batch, batch_idx, "t_")
 
     def test_epoch_end(self, outputs):
         return self.validation_epoch_end(outputs)
@@ -447,7 +447,7 @@ class Net(pl.LightningModule):
 class MyModelCheckpoint(ModelCheckpoint):
     def format_checkpoint_name(self, epoch, metrics, ver=None):
         if self.filename == "{epoch}":
-            self.filename = "{epoch}-{val_mcc:.3f}-{val_acc:.3f}-{val_f1:.3f}"
+            self.filename = "{epoch}-{v_mcc:.3f}-{v_acc:.3f}-{v_f1:.3f}"
         return super().format_checkpoint_name(epoch, metrics, ver)
 
 
@@ -457,7 +457,7 @@ def main(hparams):
     save_dir = os.getenv("HOME")
     logger = TestTubeLogger(save_dir=save_dir, name="logs", create_git_tag=True)
     checkpoint_callback = MyModelCheckpoint(
-        monitor="val_mcc", verbose=True, save_top_k=3, mode="max",
+        monitor="v_mcc", verbose=True, save_top_k=3, mode="max",
     )
     bs = hparams.batch_size
     if hparams.progress_bar_refresh_rate is None:

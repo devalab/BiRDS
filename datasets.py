@@ -17,17 +17,23 @@ class scPDB(Dataset):
     def __init__(self, hparams, test=False):
         super().__init__()
         self.hparams = hparams
+        self.test = test
         if test:
             self.data_dir = os.path.abspath("./data/2018_scPDB")
         else:
             self.data_dir = os.path.abspath("./data/scPDB")
             self.splits_dir = os.path.join(self.data_dir, "splits")
             self.fold = str(hparams.fold)
+        self.raw_dir = os.path.join(self.data_dir, "raw")
         self.preprocessed_dir = os.path.join(self.data_dir, "preprocessed")
         self.msa_dir = os.path.join(self.data_dir, "msa")
 
         # Get features and labels that are small in size
         self.sequences, self.labels = self.get_sequences_and_labels()
+        # if hparams.use_cb_coords:
+        #     self.coords = self.get_npy("cb_coords", True)
+        # else:
+        #     self.coords = self.get_npy("ca_coords", True)
         self.aap = self.get_npy("aap", hparams.use_aap)
         self.pssm = self.get_npy("pssm", hparams.use_pssm)
         self.ss2 = self.get_npy("ss2", hparams.use_ss2)
@@ -55,7 +61,11 @@ class scPDB(Dataset):
 
         # pdbID_structure/chain to available MSA pdbID_structure/chain sequence
         self.pisc_to_mpisc = {}
-        with open(os.path.join(self.data_dir, "no_one_msa_unique"), "r") as f:
+        if test:
+            unique = "no_one_msa_unique"
+        else:
+            unique = "unique"
+        with open(os.path.join(self.data_dir, unique), "r") as f:
             for line in f.readlines():
                 line = line.strip().split()
                 mpisc = line[0][:-1]
@@ -73,7 +83,9 @@ class scPDB(Dataset):
         self.pi_to_index = {pi: idx for idx, pi in enumerate(self.dataset)}
 
         if not test:
-            if hparams.compute_pos_weight:
+            if hparams.pos_weight:
+                self.pos_weight = [hparams.pos_weight]
+            else:
                 self.pos_weight = self.compute_pos_weight()
 
             self.train_indices = [self.pi_to_index[pi] for pi in self.train_fold]
@@ -84,7 +96,11 @@ class scPDB(Dataset):
     def get_sequences_and_labels(self):
         sequences = {}
         labels = {}
-        with open(os.path.join(self.data_dir, "no_one_msa_info.txt")) as f:
+        if self.test:
+            info = "no_one_msa_info.txt"
+        else:
+            info = "info.txt"
+        with open(os.path.join(self.data_dir, info)) as f:
             f.readline()
             line = f.readline()
             while line != "":
@@ -103,11 +119,19 @@ class scPDB(Dataset):
         tmp = glob(os.path.join(self.preprocessed_dir, "*", name + "_?.npy"))
         if tmp == []:
             tmp = glob(os.path.join(self.msa_dir, "*", name + "_?.npy"))
+        if tmp == []:
+            tmp = glob(os.path.join(self.raw_dir, "*", name + "_?.npy"))
         for file in tqdm(sorted(tmp)):
             pis, chain = file.split("/")[-2:]
             chain = chain[-5:-4]
             mapping[pis + "/" + chain] = np.load(file).astype(np.float32)
         return mapping
+
+    def get_coords(self, pisc):
+        pis, c = pisc.split("/")
+        if self.hparams.use_cb_coords:
+            return np.load(os.path.join(self.raw_dir, pis, "cb_coords_" + c + ".npy"))
+        return np.load(os.path.join(self.raw_dir, pis, "ca_coords_" + c + ".npy"))
 
     def get_fold(self):
         with open(os.path.join(self.splits_dir, "train_ids_fold" + self.fold)) as f:
@@ -150,6 +174,7 @@ class scPDB(Dataset):
             _meta["pisc"] = [pisc]
             _meta["mpisc"] = [mpisc]
             _meta["sequence"] = [sequence]
+            # _meta["coords"] = [self.coords[pisc]]
 
             oh = np.array([np.eye(len(AMINO_ACIDS))[AA_DICT[aa]] for aa in sequence]).T
             pe = np.arange(1, len(sequence) + 1).reshape((1, -1)) / len(sequence)
@@ -186,6 +211,8 @@ class scPDB(Dataset):
 
             _data["feature"] = np.vstack(inputs).astype(np.float32)
             _data["label"] = self.labels[pisc].astype(np.float32)
+            if self.test or index in self.valid_indices:
+                _data["coords"] = self.get_coords(pisc).astype(np.float32)
 
             if i == 0:
                 data = _data
@@ -224,7 +251,9 @@ class scPDB(Dataset):
         for key in fdata.keys():
             data[key] = np.zeros((bs, *fdata[key].shape), dtype=fdata[key].dtype)
             for i, (d, _) in enumerate(samples):
-                data[key][i, ..., : meta["length"][i]] = d[key]
+                data[key][i, ..., : meta["length"][i]] = d[key][
+                    ..., : meta["length"][i]
+                ]
             data[key] = from_numpy(data[key])
         return data, meta
 
@@ -239,14 +268,11 @@ class scPDB(Dataset):
         )
         parser.add_argument(
             "--pos-weight",
-            dest="compute_pos_weight",
-            action="store_true",
-            help="Compute the positional weight of the binding residue class. Default: %(default)s",
+            type=float,
+            default=None,
+            help="Provide a positional weight for the binding residue class. \
+                If None, it will be calculated from training set. Default: %(default)s",
         )
-        parser.add_argument(
-            "--no-pos-weight", dest="compute_pos_weight", action="store_false",
-        )
-        parser.set_defaults(compute_pos_weight=True)
 
         parser.add_argument(
             "--fixed-length",
@@ -344,5 +370,13 @@ class scPDB(Dataset):
         )
         parser.add_argument("--no-cn13", dest="use_cn13", action="store_false")
         parser.set_defaults(use_cn13=False)
+
+        parser.add_argument(
+            "--cb-coords",
+            dest="use_cb_coords",
+            action="store_true",
+            help="Use C-Beta coordinates for validation and testing metrics instead of C-Alpha. Default: %(default)s",
+        )
+        parser.set_defaults(use_cb_coords=False)
 
         return parser
