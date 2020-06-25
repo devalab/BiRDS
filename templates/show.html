@@ -1,0 +1,48 @@
+<!DOCTYPE html>
+<html>
+
+<head>
+    <title>Binding Site Predictions</title>
+    <meta charset="utf-8">
+    <script type="text/javascript" src="js/JSmol.min.js"></script>
+    <script type="text/javascript" src="js/Jmol2.js"></script>
+    <style>
+        #leftbox {
+            float: left;
+            width: 50%;
+        }
+
+        #rightbox {
+            float: right;
+            width: 50%;
+            margin: auto;
+        }
+    </style>
+</head>
+
+<body>
+    <div id="leftbox">
+        <script type=text/javascript>
+            jmolInitialize("jmol"); jmolSetAppletColor("white");
+            script = "load " + "{{protein}}" + " ;"
+            + " restrict water; select protein; color [xFFFFC0]; cartoon;"
+            + " {{selections}}"
+            + " spacefill 25%;  wireframe 50;"
+            + " load append " + "{{ligand}}" + " ;" 
+            + " select hetero; spacefill 95%; frame all;"
+            console.log(script);
+            jmolApplet(850, script);
+            document.write("<br>");
+            jmolButton("Reset","Reset to initial orientation");
+            jmolCheckbox("spin on", "spin off", "spin", "checked=false");jmolBr();
+        </script>
+    </div>
+    <div id="rightbox">
+        <h1>METRICS</h1>
+        {% for key, value in metrics.items() %}
+        <div><b>{{key}}</b>: {{value}}</div>
+        {% endfor %}
+    </div>
+</body>
+
+</html>

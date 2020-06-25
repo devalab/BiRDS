@@ -4,57 +4,88 @@ from shutil import copyfile
 
 import torch
 from flask import Flask, render_template
+from tqdm.auto import tqdm
 
+from metrics import batch_metrics
 from net import Net
 
-data_dir = os.path.abspath("./data/")
+
+def get_pred_metrics(dataset):
+    out = {}
+    try:
+        indices = dataset.valid_indices
+    except AttributeError:
+        indices = range(len(dataset.dataset))
+    print("Running through dataset")
+    for ind in tqdm(indices):
+        pi = dataset.dataset[ind]
+        pis = dataset.pi_to_pis[pi][0]
+        data, meta = dataset[ind]
+        meta["length"] = torch.tensor([len(data["label"])], device=device)
+        for key in data:
+            data[key] = torch.tensor([data[key]], device=device)
+        y_pred = net(data["feature"], meta["length"])
+        metrics = batch_metrics(y_pred, data, meta)
+        metrics["f_dcc"] = metrics["f_dcc"][0]
+        metrics = {key: val.item() for key, val in metrics.items() if key != "f_cm"}
+        metrics["mcc"] *= 100.0
+        metrics["acc"] *= 100.0
+        metrics["iou"] *= 100.0
+        metrics["precision"] *= 100.0
+        metrics["recall"] *= 100.0
+        metrics["f1"] *= 100.0
+        out[pis] = {"data": data, "meta": meta, "y_pred": y_pred, "metrics": metrics}
+    out = {
+        k: v
+        for k, v in sorted(
+            out.items(), key=lambda item: item[1]["metrics"]["mcc"], reverse=True
+        )
+    }
+    return out
+
+
 parser = ArgumentParser(description="Binding Site Predictor", add_help=True)
 parser.add_argument("cpkt", type=str, help="Checkpoint file for loading model")
 args = parser.parse_args()
-net = Net.load_from_checkpoint(args.cpkt)
+data_dir = os.path.abspath("./data/")
+net = Net.load_from_checkpoint(args.cpkt).cuda()
 device = net.device
+print(device)
 net.freeze()
 net.eval()
+validation = get_pred_metrics(net.train_ds)
+test = get_pred_metrics(net.test_ds)
 
 app = Flask(__name__, static_url_path="")
 
 
 @app.route("/")
 def main():
-    return render_template(
-        "main.html",
-        selections="select 18,19,20; color green; select 21,23,39; color red; select 40,41,60,61,78,304,305,306; color blue; select 18,19,20,21,23,39,40,41,60,61,78,304,305,306;",
-        colors=[
-            " select 18 and *.ca; label %n%R; color label magenta;select 19 and *.ca; label %n%R; color label magenta;select 20 and *.ca; label %n%R; color label magenta;",
-            " select 21 and *.ca; label %n%R; color label magenta;select 23 and *.ca; label %n%R; color label magenta;select 39 and *.ca; label %n%R; color label magenta;",
-            " select 40 and *.ca; label %n%R; color label magenta;select 41 and *.ca; label %n%R; color label magenta;select 60 and *.ca; label %n%R; color label magenta;select 61 and *.ca; label %n%R; color label magenta;select 78 and *.ca; label %n%R; color label magenta;select 304 and *.ca; label %n%R; color label magenta;select 305 and *.ca; label %n%R; color label magenta;select 306 and *.ca; label %n%R; color label magenta;  label %n%R; color label magenta;",
-        ],
-    )
+    return render_template("index.html", validation=validation, test=test)
 
 
 @app.route("/<pis>")
 def show(pis):
-    pre = os.path.join(data_dir, "scPDB", "raw", pis)
     sv = "data/" + pis + "/"
     if not os.path.exists("./static/" + sv):
         os.makedirs("./static/" + sv)
-    if not os.path.exists(pre):
+    if pis in test:
         pre = os.path.join(data_dir, "2018_scPDB", "raw", pis)
-        dataset = net.test_ds
+        hlp = test[pis]
     else:
-        dataset = net.train_ds
+        pre = os.path.join(data_dir, "scPDB", "raw", pis)
+        hlp = validation[pis]
     protein = sv + "protein.pdb"
     ligand = sv + "ligand.mol2"
     copyfile(os.path.join(pre, "reindexed_protein.pdb"), "./static/" + protein)
     copyfile(os.path.join(pre, "ligand.mol2"), "./static/" + ligand)
-    idx = dataset.pi_to_index[pis[:4]]
-    data, meta = dataset[idx]
-    y_true = torch.tensor(data["label"], device=device).bool()
-    y_pred = net(
-        torch.tensor([data["feature"]], device=device),
-        torch.tensor([len(data["label"])], device=device),
-    )[0]
-    y_pred = (torch.sigmoid(y_pred) > 0.5).bool()
+
+    metrics = hlp["metrics"]
+    y_pred = hlp["y_pred"]
+    data = hlp["data"]
+    meta = hlp["meta"]
+    y_true = data["label"][0].bool()
+    y_pred = (torch.sigmoid(y_pred[0]) > 0.5).bool()
     # print(y_true)
     # print(y_pred)
     selections = ["select "] * 3
@@ -89,7 +120,11 @@ def show(pis):
     final_selections = tmp + final_selections[:-1] + ";"
     # print(final_selections)
     return render_template(
-        "main.html", protein=protein, ligand=ligand, selections=final_selections
+        "show.html",
+        protein=protein,
+        ligand=ligand,
+        selections=final_selections,
+        metrics=metrics,
     )
     return ""
 

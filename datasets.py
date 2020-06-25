@@ -84,9 +84,14 @@ class scPDB(Dataset):
 
         if not test:
             if hparams.pos_weight:
+                print("Using provided positional weighting")
                 self.pos_weight = [hparams.pos_weight]
-            else:
+            elif hparams.pos_weight == 0.0:
+                print("Precomputing positional weights...")
                 self.pos_weight = self.compute_pos_weight()
+            else:
+                print("Positional weights will be computed on the fly")
+                self.pos_weight = None
 
             self.train_indices = [self.pi_to_index[pi] for pi in self.train_fold]
             self.valid_indices = [self.pi_to_index[pi] for pi in self.valid_fold]
@@ -141,7 +146,6 @@ class scPDB(Dataset):
         return train, valid
 
     def compute_pos_weight(self):
-        print("Computing positional weights...")
         zeros = 0
         ones = 0
         for pi in tqdm(self.train_fold, leave=False):
@@ -174,7 +178,6 @@ class scPDB(Dataset):
             _meta["pisc"] = [pisc]
             _meta["mpisc"] = [mpisc]
             _meta["sequence"] = [sequence]
-            # _meta["coords"] = [self.coords[pisc]]
 
             oh = np.array([np.eye(len(AMINO_ACIDS))[AA_DICT[aa]] for aa in sequence]).T
             pe = np.arange(1, len(sequence) + 1).reshape((1, -1)) / len(sequence)
@@ -271,7 +274,8 @@ class scPDB(Dataset):
             type=float,
             default=None,
             help="Provide a positional weight for the binding residue class. \
-                If None, it will be calculated from training set. Default: %(default)s",
+                If 0.0, it will be calculated from training set. \
+                If None, it will be calculated on the fly for each batch. Default: %(default)s",
         )
 
         parser.add_argument(

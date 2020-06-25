@@ -4,9 +4,8 @@ from collections import OrderedDict
 import matplotlib.pyplot as plt
 import numpy as np
 import torch
-
-from torch_cluster import grid_cluster, fps
 from torch.nn.functional import binary_cross_entropy_with_logits, mse_loss
+from torch_cluster import fps, grid_cluster
 
 # Utils
 
@@ -32,7 +31,7 @@ def confusion_matrix_figure(cm, class_names):
     # Normalize the confusion matrix.
     cm = np.around(cm.astype("float") / cm.sum(axis=1)[:, np.newaxis], decimals=2)
 
-    # Use white text if squares are dark; otherwise black.
+    # Use red text if squares are dark; otherwise black.
     threshold = cm.max() / 2.0
     for i, j in itertools.product(range(cm.shape[0]), range(cm.shape[1])):
         color = "red" if cm[i, j] > threshold else "black"
@@ -156,6 +155,7 @@ def GRID(y_pred, y_true, data, meta):
         # tmp = true_labels.unique()
         # if len(tmp) != 1:
         #     print(meta["pisc"][i], len(tmp))
+        return torch.norm(true_centroid - pred_centroid)
         if torch.norm(true_centroid - pred_centroid) < 8.0:
             out += 1
         idx += length
@@ -184,6 +184,7 @@ def FPS(y_pred, y_true, data, meta):
             torch.ones_like(pred_pocket[:, 0]).bool().scatter_(0, pred_fp, 0.0)
         ]
         pred_centroid = torch.mean(pred_neighbours, dim=0)
+        return torch.norm(true_centroid - pred_centroid)
         if torch.norm(true_centroid - pred_centroid) < 8.0:
             out += 1
         idx += length
@@ -194,7 +195,7 @@ def FPS(y_pred, y_true, data, meta):
 
 
 def weighted_focal_loss(y_pred, y_true, gamma=2.0, pos_weight=[1], **kwargs):
-    pos_weight = torch.Tensor(pos_weight).type(y_true[0].type())
+    pos_weight = torch.Tensor(pos_weight).to(y_true.device)
     y_pred = torch.clamp(torch.sigmoid(y_pred), SMOOTH, 1.0 - SMOOTH)
     loss = -(
         pos_weight * y_true * torch.pow(1.0 - y_pred, gamma) * torch.log(y_pred)
@@ -214,8 +215,11 @@ def pl_weighted_loss(y_pred, y_true, batch_idx, lengths, pl_dist=None, **kwargs)
     return torch.mean(loss)
 
 
-def weighted_bce_loss(y_pred, y_true, pos_weight=[1], **kwargs):
-    pos_weight = torch.Tensor(pos_weight).type(y_true[0].type())
+def weighted_bce_loss(y_pred, y_true, pos_weight, **kwargs):
+    if pos_weight is None:
+        pos_weight = y_true.sum()
+        pos_weight = [(len(y_true) - pos_weight) / pos_weight]
+    pos_weight = torch.Tensor(pos_weight).to(y_true.device)
     return binary_cross_entropy_with_logits(
         y_pred, y_true, pos_weight=pos_weight, reduction="mean"
     )
@@ -276,19 +280,7 @@ def batch_metrics(y_preds, data, meta, is_logits=True, threshold=0.5):
     return metrics
 
 
-# def num_ones(y_preds, y_trues, **kwargs):
-#     pred_ones = (torch.sigmoid(y_preds) > 0.5).bool().sum()
-#     true_ones = y_trues.bool().sum()
-#     return torch.abs(true_ones - pred_ones).float() / true_ones
-
-
 def batch_loss(y_preds, y_trues, lengths, loss_func, **kwargs):
     y_preds, y_trues = batch_work(y_preds, y_trues, lengths)
     loss = loss_func(y_preds, y_trues, **kwargs)
     return loss
-
-
-# def train_end_metrics():
-#     metrics = {
-
-#     }

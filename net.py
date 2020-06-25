@@ -10,10 +10,10 @@ from datasets import scPDB
 from metrics import (
     batch_loss,
     batch_metrics,
-    make_figure,
     detector_margin_loss,
     generator_mse_loss,
     generator_pos_loss,
+    make_figure,
     pl_weighted_loss,
     weighted_bce_loss,
     weighted_focal_loss,
@@ -139,7 +139,11 @@ class Net(pl.LightningModule):
             {
                 prefix
                 + "loss": batch_loss(
-                    y_pred, data["label"], meta["length"], self.loss_func
+                    y_pred,
+                    data["label"],
+                    meta["length"],
+                    self.loss_func,
+                    pos_weight=[1.0],
                 )
             }
         )

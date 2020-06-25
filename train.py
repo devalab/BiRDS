@@ -56,10 +56,10 @@ def main(hparams):
         # overfit_pct=0.05,
     )
 
-    if hparams.load_from_checkpoint is None:
-        net = Net(hparams)
+    if hparams.resume_from_checkpoint:
+        net = Net.load_from_checkpoint(hparams.resume_from_checkpoint)
     else:
-        net = Net.load_from_checkpoint(hparams.load_from_checkpoint)
+        net = Net(hparams)
 
     trainer.fit(net)
 
@@ -121,13 +121,6 @@ if __name__ == "__main__":
     )
     trainer_group.add_argument("--no-cgan", dest="use_cgan", action="store_false")
     trainer_group.set_defaults(use_cgan=False)
-    trainer_group.add_argument(
-        "--load-from-checkpoint",
-        metavar="PATH",
-        default=None,
-        type=str,
-        help="Load model from file path provided",
-    )
     trainer_group.add_argument(
         "--resume-from-checkpoint",
         metavar="PATH",
