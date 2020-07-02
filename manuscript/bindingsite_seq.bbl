@@ -1,0 +1,213 @@
+\providecommand{\latin}[1]{#1}
+\makeatletter
+\providecommand{\doi}
+  {\begingroup\let\do\@makeother\dospecials
+  \catcode`\{=1 \catcode`\}=2 \doi@aux}
+\providecommand{\doi@aux}[1]{\endgroup\texttt{#1}}
+\makeatother
+\providecommand*\mcitethebibliography{\thebibliography}
+\csname @ifundefined\endcsname{endmcitethebibliography}
+  {\let\endmcitethebibliography\endthebibliography}{}
+\begin{mcitethebibliography}{21}
+\providecommand*\natexlab[1]{#1}
+\providecommand*\mciteSetBstSublistMode[1]{}
+\providecommand*\mciteSetBstMaxWidthForm[2]{}
+\providecommand*\mciteBstWouldAddEndPuncttrue
+  {\def\EndOfBibitem{\unskip.}}
+\providecommand*\mciteBstWouldAddEndPunctfalse
+  {\let\EndOfBibitem\relax}
+\providecommand*\mciteSetBstMidEndSepPunct[3]{}
+\providecommand*\mciteSetBstSublistLabelBeginEnd[3]{}
+\providecommand*\EndOfBibitem{}
+\mciteSetBstSublistMode{f}
+\mciteSetBstMaxWidthForm{subitem}{(\alph{mcitesubitemcount})}
+\mciteSetBstSublistLabelBeginEnd
+  {\mcitemaxwidthsubitemform\space}
+  {\relax}
+  {\relax}
+
+\bibitem[Desaphy \latin{et~al.}(2015)Desaphy, Bret, Rognan, and
+  Kellenberger]{desaphy2015sc}
+Desaphy,~J.; Bret,~G.; Rognan,~D.; Kellenberger,~E. sc-PDB: a 3D-database of
+  ligandable binding sites—10 years on. \emph{Nucleic acids research}
+  \textbf{2015}, \emph{43}, D399--D404\relax
+\mciteBstWouldAddEndPuncttrue
+\mciteSetBstMidEndSepPunct{\mcitedefaultmidpunct}
+{\mcitedefaultendpunct}{\mcitedefaultseppunct}\relax
+\EndOfBibitem
+\bibitem[Zhang()]{NWAlign}
+Zhang,~Y. \url{http://zhanglab.ccmb.med.umich.edu/NW-align}\relax
+\mciteBstWouldAddEndPuncttrue
+\mciteSetBstMidEndSepPunct{\mcitedefaultmidpunct}
+{\mcitedefaultendpunct}{\mcitedefaultseppunct}\relax
+\EndOfBibitem
+\bibitem[Stepniewska-Dziubinska \latin{et~al.}(2020)Stepniewska-Dziubinska,
+  Zielenkiewicz, and Siedlecki]{stepniewska2020improving}
+Stepniewska-Dziubinska,~M.~M.; Zielenkiewicz,~P.; Siedlecki,~P. Improving
+  detection of protein-ligand binding sites with 3D segmentation.
+  \emph{Scientific reports} \textbf{2020}, \emph{10}, 1--9\relax
+\mciteBstWouldAddEndPuncttrue
+\mciteSetBstMidEndSepPunct{\mcitedefaultmidpunct}
+{\mcitedefaultendpunct}{\mcitedefaultseppunct}\relax
+\EndOfBibitem
+\bibitem[Zhang \latin{et~al.}(2020)Zhang, Zheng, Mortuza, Li, and
+  Zhang]{zhang2020deepmsa}
+Zhang,~C.; Zheng,~W.; Mortuza,~S.; Li,~Y.; Zhang,~Y. DeepMSA: constructing deep
+  multiple sequence alignment to improve contact prediction and
+  fold-recognition for distant-homology proteins. \emph{Bioinformatics}
+  \textbf{2020}, \emph{36}, 2105--2112\relax
+\mciteBstWouldAddEndPuncttrue
+\mciteSetBstMidEndSepPunct{\mcitedefaultmidpunct}
+{\mcitedefaultendpunct}{\mcitedefaultseppunct}\relax
+\EndOfBibitem
+\bibitem[Mirdita \latin{et~al.}(2017)Mirdita, von~den Driesch, Galiez, Martin,
+  S{\"o}ding, and Steinegger]{mirdita2017uniclust}
+Mirdita,~M.; von~den Driesch,~L.; Galiez,~C.; Martin,~M.~J.; S{\"o}ding,~J.;
+  Steinegger,~M. Uniclust databases of clustered and deeply annotated protein
+  sequences and alignments. \emph{Nucleic acids research} \textbf{2017},
+  \emph{45}, D170--D176\relax
+\mciteBstWouldAddEndPuncttrue
+\mciteSetBstMidEndSepPunct{\mcitedefaultmidpunct}
+{\mcitedefaultendpunct}{\mcitedefaultseppunct}\relax
+\EndOfBibitem
+\bibitem[Remmert \latin{et~al.}(2012)Remmert, Biegert, Hauser, and
+  S{\"o}ding]{remmert2012hhblits}
+Remmert,~M.; Biegert,~A.; Hauser,~A.; S{\"o}ding,~J. HHblits: lightning-fast
+  iterative protein sequence searching by HMM-HMM alignment. \emph{Nature
+  methods} \textbf{2012}, \emph{9}, 173--175\relax
+\mciteBstWouldAddEndPuncttrue
+\mciteSetBstMidEndSepPunct{\mcitedefaultmidpunct}
+{\mcitedefaultendpunct}{\mcitedefaultseppunct}\relax
+\EndOfBibitem
+\bibitem[Suzek \latin{et~al.}(2015)Suzek, Wang, Huang, McGarvey, Wu, and
+  Consortium]{suzek2015uniref}
+Suzek,~B.~E.; Wang,~Y.; Huang,~H.; McGarvey,~P.~B.; Wu,~C.~H.; Consortium,~U.
+  UniRef clusters: a comprehensive and scalable alternative for improving
+  sequence similarity searches. \emph{Bioinformatics} \textbf{2015}, \emph{31},
+  926--932\relax
+\mciteBstWouldAddEndPuncttrue
+\mciteSetBstMidEndSepPunct{\mcitedefaultmidpunct}
+{\mcitedefaultendpunct}{\mcitedefaultseppunct}\relax
+\EndOfBibitem
+\bibitem[Johnson \latin{et~al.}(2010)Johnson, Eddy, and
+  Portugaly]{johnson2010hidden}
+Johnson,~L.~S.; Eddy,~S.~R.; Portugaly,~E. Hidden Markov model speed heuristic
+  and iterative HMM search procedure. \emph{BMC bioinformatics} \textbf{2010},
+  \emph{11}, 431\relax
+\mciteBstWouldAddEndPuncttrue
+\mciteSetBstMidEndSepPunct{\mcitedefaultmidpunct}
+{\mcitedefaultendpunct}{\mcitedefaultseppunct}\relax
+\EndOfBibitem
+\bibitem[Abarca \latin{et~al.}(2000)Abarca, G\'omez-Sal, Mart\'in, Mena,
+  Poblet, and Y\'elamos]{Mena2000}
+Abarca,~A.; G\'omez-Sal,~P.; Mart\'in,~A.; Mena,~M.; Poblet,~J.~M.;
+  Y\'elamos,~C. {A}mmonolysis of mono(pentamethylcyclopentadienyl)
+  titanium(\textsc{iv}) derivatives. \emph{Inorg. Chem.} \textbf{2000},
+  \emph{39}, 642--651\relax
+\mciteBstWouldAddEndPuncttrue
+\mciteSetBstMidEndSepPunct{\mcitedefaultmidpunct}
+{\mcitedefaultendpunct}{\mcitedefaultseppunct}\relax
+\EndOfBibitem
+\bibitem[Abernethy \latin{et~al.}(2003)Abernethy, Codd, Spicer, and
+  Taylor]{Abernethy2003}
+Abernethy,~C.~D.; Codd,~G.~M.; Spicer,~M.~D.; Taylor,~M.~K. {A} highly stable
+  {N}-heterocyclic carbene complex of trichloro-oxo-vanadium(\textsc{v})
+  displaying novel {C}l---{C}(carbene) bonding interactions. \emph{{J}. {A}m.
+  {C}hem. {S}oc.} \textbf{2003}, \emph{125}, 1128--1129\relax
+\mciteBstWouldAddEndPuncttrue
+\mciteSetBstMidEndSepPunct{\mcitedefaultmidpunct}
+{\mcitedefaultendpunct}{\mcitedefaultseppunct}\relax
+\EndOfBibitem
+\bibitem[Friedman-Hill(2003)]{Friedman-Hill2003}
+Friedman-Hill,~E. \emph{{J}ess in {A}ction: {J}ava {R}ule-based {S}ystems}, 1st
+  ed.; Manning Publications Co.: Greenwich, CT, USA, 2003\relax
+\mciteBstWouldAddEndPuncttrue
+\mciteSetBstMidEndSepPunct{\mcitedefaultmidpunct}
+{\mcitedefaultendpunct}{\mcitedefaultseppunct}\relax
+\EndOfBibitem
+\bibitem[Eur(2008)]{EuropeanCommission2008}
+\emph{Communication from the European Commission to the European Council and
+  the European Parliament: 20 20 by 2020: Europe's climate change opportunity};
+  European Commission: Brussels, Belgium, 2008\relax
+\mciteBstWouldAddEndPuncttrue
+\mciteSetBstMidEndSepPunct{\mcitedefaultmidpunct}
+{\mcitedefaultendpunct}{\mcitedefaultseppunct}\relax
+\EndOfBibitem
+\bibitem[Cotton \latin{et~al.}(1999)Cotton, Wilkinson, Murillio, and
+  Bochmann]{Cotton1999}
+Cotton,~F.~A.; Wilkinson,~G.; Murillio,~C.~A.; Bochmann,~M. \emph{{A}dvanced
+  {I}norganic {C}hemistry}, 6th ed.; Wiley: Chichester, United Kingdom,
+  1999\relax
+\mciteBstWouldAddEndPuncttrue
+\mciteSetBstMidEndSepPunct{\mcitedefaultmidpunct}
+{\mcitedefaultendpunct}{\mcitedefaultseppunct}\relax
+\EndOfBibitem
+\bibitem[Frisch \latin{et~al.}(2004)Frisch, Trucks, Schlegel, Scuseria, Robb,
+  Cheeseman, Montgomery, Jr., A., Vreven, Kudin, Burant, Millam, Iyengar,
+  Tomasi, Barone, Mennucci, Cossi, Scalmani, Rega, Petersson, Nakatsuji, Hada,
+  Ehara, Toyota, Fukuda, Hasegawa, Ishida, Nakajima, Honda, Kitao, Nakai,
+  Klene, Li, Knox, Hratchian, Cross, Bakken, Adamo, Jaramillo, Gomperts,
+  Stratmann, Yazyev, Austin, Cammi, Pomelli, Ochterski, Ayala, Morokuma, Voth,
+  Salvador, Dannenberg, Zakrzewski, Dapprich, Daniels, Strain, Farkas, Malick,
+  Rabuck, Raghavachari, Foresman, Ortiz, Cui, Baboul, Clifford, Cioslowski,
+  Stefanov, Liu, Liashenko, Piskorz, Komaromi, Martin, Fox, Keith, Al-Laham,
+  Peng, Nanayakkara, Challacombe, Gill, Johnson, Chen, Wong, Gonzalez, and
+  Pople]{Pople2003}
+Frisch,~M.~J. \latin{et~al.}  {G}aussian 03. Gaussian, Inc.: Wallingford, CT,
+  2004\relax
+\mciteBstWouldAddEndPuncttrue
+\mciteSetBstMidEndSepPunct{\mcitedefaultmidpunct}
+{\mcitedefaultendpunct}{\mcitedefaultseppunct}\relax
+\EndOfBibitem
+\bibitem[Johnson(1972)]{Johnson1972}
+Johnson,~A.~L. (E.~I.~du Pont de Nemours). 1-(Alkylsubstituted
+  phenyl)imidazoles useful in ACTH reverse assay. US~Patent 3637731, 1972\relax
+\mciteBstWouldAddEndPuncttrue
+\mciteSetBstMidEndSepPunct{\mcitedefaultmidpunct}
+{\mcitedefaultendpunct}{\mcitedefaultseppunct}\relax
+\EndOfBibitem
+\bibitem[Arduengo \latin{et~al.}(1992)Arduengo, Dias, Harlow, and
+  Kline]{Arduengo1992}
+Arduengo,~A.~J.,~III; Dias,~H. V.~R.; Harlow,~R.~L.; Kline,~M. {E}lectronic
+  stabilization of nucleophilic carbenes. \emph{{J}.~{A}m.\ {C}hem.\ {S}oc.}
+  \textbf{1992}, \emph{114}, 5530--5534\relax
+\mciteBstWouldAddEndPuncttrue
+\mciteSetBstMidEndSepPunct{\mcitedefaultmidpunct}
+{\mcitedefaultendpunct}{\mcitedefaultseppunct}\relax
+\EndOfBibitem
+\bibitem[Appelhans \latin{et~al.}(2005)Appelhans, Zuccaccia, Kovacevic,
+  Chianese, Miecznikowski, Macchioni, Clot, Eisenstein, and
+  Crabtree]{Eisenstein2005}
+Appelhans,~L.~N.; Zuccaccia,~D.; Kovacevic,~A.; Chianese,~A.~R.;
+  Miecznikowski,~J.~R.; Macchioni,~A.; Clot,~E.; Eisenstein,~O.;
+  Crabtree,~R.~H. {A}n anion-dependent switch in selectivity results from a
+  change of {C}---{H} activation mechanism in the reaction of an imidazolium
+  salt with \ce{IrH5(PPh3)2}. \emph{{J}.~{A}m.\ {C}hem. {S}oc.} \textbf{2005},
+  \emph{127}, 16299--16311\relax
+\mciteBstWouldAddEndPuncttrue
+\mciteSetBstMidEndSepPunct{\mcitedefaultmidpunct}
+{\mcitedefaultendpunct}{\mcitedefaultseppunct}\relax
+\EndOfBibitem
+\bibitem[Arduengo \latin{et~al.}(1994)Arduengo, Gamper, Calabrese, and
+  Davidson]{Arduengo1994}
+Arduengo,~A.~J.,~III; Gamper,~S.~F.; Calabrese,~J.~C.; Davidson,~F.
+  {L}ow-coordinate carbene complexes of nickel(0) and platinum(0).
+  \emph{J.~Am.\ Chem.\ Soc.} \textbf{1994}, \emph{116}, 4391--4394\relax
+\mciteBstWouldAddEndPuncttrue
+\mciteSetBstMidEndSepPunct{\mcitedefaultmidpunct}
+{\mcitedefaultendpunct}{\mcitedefaultseppunct}\relax
+\EndOfBibitem
+\bibitem[Not()]{Note-1}
+This is a note. The text will be moved the the references section. The title of
+  the section will change to ``Notes and References''.\relax
+\mciteBstWouldAddEndPunctfalse
+\mciteSetBstMidEndSepPunct{\mcitedefaultmidpunct}
+{}{\mcitedefaultseppunct}\relax
+\EndOfBibitem
+\bibitem[Not()]{Note-2}
+Ref.~\citenum {Cotton1999}, p.~1\relax
+\mciteBstWouldAddEndPuncttrue
+\mciteSetBstMidEndSepPunct{\mcitedefaultmidpunct}
+{\mcitedefaultendpunct}{\mcitedefaultseppunct}\relax
+\EndOfBibitem
+\end{mcitethebibliography}
