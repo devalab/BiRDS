@@ -7,12 +7,13 @@
 
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 %% Place any additional packages needed here.  Only include packages
-%% which are essential, to avoid problems later. Do NOT use any
+%%, which are essential, to avoid problems later. Do NOT use any
 %% packages which require e-TeX (for example etoolbox): the e-TeX
 %% extensions are not currently available on the ACS conversion
 %% servers.
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
-\usepackage[version=3]{mhchem} % Formula subscripts using \ce{}
+% \usepackage[version=3]{mhchem} % Formula subscripts using \ce{}
+% \usepackage{hyperref}
 
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 %% If issues arise when submitting your manuscript, you may want to
@@ -28,57 +29,22 @@
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 \newcommand*\mycommand[1]{\texttt{\emph{#1}}}
 
-%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
-%% Meta-data block
-%% ---------------
-%% Each author should be given as a separate \author command.
-%%
-%% Corresponding authors should have an e-mail given after the author
-%% name as an \email command. Phone and fax numbers can be given
-%% using \phone and \fax, respectively; this information is optional.
-%%
-%% The affiliation of authors is given after the authors; each
-%% \affiliation command applies to all preceding authors not already
-%% assigned an affiliation.
-%%
-%% The affiliation takes an option argument for the short name.  This
-%% will typically be something like "University of Somewhere".
-%%
-%% The \altaffiliation macro should be used for new address, etc.
-%% On the other hand, \alsoaffiliation is used on a per author basis
-%% when authors are associated with multiple institutions.
-%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
-\author{Andrew N. Other}
-\altaffiliation{A shared footnote}
-\author{Fred T. Secondauthor}
-\altaffiliation{Current address: Some other place, Othert\"own,
-Germany}
-\author{I. Ken Groupleader}
-\altaffiliation{A shared footnote}
-\email{i.k.groupleader@unknown.uu}
-\phone{+123 (0)123 4445556}
-\fax{+123 (0)123 4445557}
-\affiliation[Unknown University]
-{Department of Chemistry, Unknown University, Unknown Town}
-\alsoaffiliation[Second University]
-{Department of Chemistry, Second University, Nearby Town}
-\author{Susanne K. Laborator}
-\email{s.k.laborator@bigpharma.co}
-\affiliation[BigPharma]
-{Lead Discovery, BigPharma, Big Town, USA}
-\author{Kay T. Finally}
-\affiliation[Unknown University]
-{Department of Chemistry, Unknown University, Unknown Town}
-\alsoaffiliation[Second University]
-{Department of Chemistry, Second University, Nearby Town}
+
+\author{Vineeth R. Chelur}
+\author{U. Deva Priyakumar}
+\email{deva@iiit.ac.in}
+% \phone{+91 9490441430}
+% \author{Yashaswi Pathak}
+\affiliation[IIIT-H]
+{Center for Computational Natural Sciences \& Bioinformatics, IIIT-H, Hyderabad}
 
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 %% The document title should be given as usual. Some journals require
 %% a running title from the author: this should be supplied as an
 %% optional argument to \title.
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
-\title[An \textsf{achemso} demo]
-  {Predicting binding site of a protein for druggable ligands from sequence-based features using Deep Learning
+\title[Predicting the binding-site of a protein for druggable ligands from sequence-based features using Deep Learning]
+  {Predicting the binding-site of a protein for druggable ligands from sequence-based features using Deep Learning
 %   \footnote{A footnote for the title}
   }
 
@@ -127,223 +93,71 @@ Germany}
 %% if an abstract is not used by the target journal.
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 \begin{abstract}
-    With improvements in sequencing methods, the number of protein sequences available is rapidly increasing. However, because of the high cost and labor-intensive nature of structural experiments, the gap between the number of protein sequences and solved structures is widening rapidly.
+    With improvements in sequencing methods, the number of protein sequences available is rapidly increasing. However, because of the high cost and labour-intensive nature of structural experiments, the gap between the number of protein sequences and solved structures is widening rapidly. One of the earliest steps in drug discovery is identifying the active binding site of the target protein. Deep Learning has been used in a variety of biochemical tasks and has been hugely successful. In this paper, a residual neural network is implemented to predict a protein's most active binding site using features extracted from just the primary sequence. (Add information of results)
 \end{abstract}
 
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 %% Start the main part of the manuscript here.
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 \section{Introduction}
-This is a paragraph of text to fill the introduction of the
-demonstration file.  The demonstration file attempts to show the
-modifications of the standard \LaTeX\ macros that are implemented by
-the \textsf{achemso} class.  These are mainly concerned with content,
-as opposed to appearance.
 
 
 \section{Dataset}
-For training and validation of the model, the sc-PDB\cite{desaphy2015sc} dataset (v 2017) was used. The database consists of ligandable binding sites of the Protein Data Bank along with prepared protein structures. Thus each sample in the dataset contained one ligand, one protein and one site, all stored in mol2 format. Since the predictions had to be made from the sequence alone, the provided mol2 files had to be reindexed to match the sequence downloaded from RCSB. Some PDBs had been obseleted and hence the sequences were manually tracked on RCSB and the corresponding sequences were used.
+For the training and validation of the model, the sc-PDB\cite{desaphy2015sc} dataset (v 2017) is used. The database consists of druggable binding sites of the Protein Data Bank along with prepared protein structures. Thus each sample in the dataset contains one ligand, one protein, and one site, all stored in mol2 format. Since the predictions are made from the sequence alone, the provided mol2 files are reindexed to match the sequence downloaded from RCSB. This way, the specific binding residues can be labelled in the sequence. Some PDB IDs are obsoleted, and hence the sequences were manually tracked on RCSB, and the corresponding sequences were used.
 
 Needleman-Wunsch dynamic programming for pairwise protein sequence alignment implemented using a modified version of Zhanglab's NW-Align program\cite{NWAlign} was used to reindex a protein according to its RCSB sequence.
 
-The data from sc-PDB was split into 10-folds (each containing 1586 structures), based on Uniprot ID, exactly like Kalasanty\cite{stepniewska2020improving}.
+The training set consists of 17,594 PDB structures with 28,959 sequences (9519 unique sequences), originating from 1240 organisms, the most abundant being human(28.26\%), (Add the rest here). The dataset was diverse and contained proteins from 1996 different PFAM families (Most abundant needs to be added) and 856 PFAM clans. The data from sc-PDB is split into 10-folds (each containing 1586 structures), based on Uniprot ID, exactly like Kalasanty\cite{stepniewska2020improving}.
 
-The test set was constructed using all PDBs from 2018 onwards, till 28th February, 2020. All PDBs available during this period were taken and having at least one ligand were considered. These were then run through IChem Toolkit to generate a dataset similar to sc-PDB dataset. This consists of 2274 binding sites.
-
-Note: Need to write more about the dataset (specifically test dataset), like statistics
+The test set is constructed using all PDBs from 2018 onwards, till 28th February 2020. All PDBs available during this period and having at least one ligand are considered. These were then run through IChem Toolkit \cite{da2018ichem} to generate a dataset similar to the sc-PDB dataset. The test set consists of 2,274 PDB structures with 3,434 sequences (1889 unique sequences), originating from 548 organisms, the most abundant being human(23.76\%). The test set contained proteins from 882 PFAM families and 452 PFAM clans.
 
 
 \section{Methods}
 \subsection{MSA Generation}
-As described in the introduction, the number of protein sequences is rapidly exploding. Collections of multiple homologous sequences (called Multiple Sequence Alignments or MSAs) can provide critical information to the modeling of structure and function of unknown proteins. DeepMSA \cite{zhang2020deepmsa} is an open-source method for sensitive MSA construction which has homologous sequences and alignments created from multiple sources of databases through complementary hidden Markov model algorithms.
+As described in the introduction, the number of protein sequences is rapidly exploding. Collections of multiple homologous sequences (called Multiple Sequence Alignments or MSAs) can provide critical information to the modelling of the structure and function of unknown proteins. DeepMSA \cite{zhang2020deepmsa} is an open-source method for sensitive MSA construction, which has homologous sequences and alignments created from multiple sources of databases through complementary hidden Markov model algorithms.
 
-The search is done in 2 stages. In stage 1, the query sequence is searched against the UniClust30 \cite{mirdita2017uniclust} database using HHBlits from HH-suite\cite{remmert2012hhblits} (v.2.0.16). If the number of effective sequences is $<$ 128, Stage 2 is performed where the query sequence is searched against Uniref50 \cite{suzek2015uniref} database using JackHMMER from HMMER \cite{johnson2010hidden} (v.3.1b2). Full-length sequences are extracted from the JackHMMER raw hits and converted into a custom HHBlits format database. HHBlits is again applied to jump start the search from Stage 1 sequence MSA against this custom database.
+The search is done in 2 stages. In stage 1, the query sequence is searched against the UniClust30 \cite{mirdita2017uniclust} database using HHBlits from HH-suite\cite{remmert2012hhblits} (v2.0.16). If the number of effective sequences is $<$ 128, Stage 2 is performed where the query sequence is searched against the Uniref50 \cite{suzek2015uniref} database using JackHMMER from HMMER \cite{johnson2010hidden} (v3.1b2). Full-length sequences are extracted from the JackHMMER raw hits and converted into a custom HHBlits format database. HHBlits is applied to jump-start the search from Stage 1 sequence MSA against this custom database.
 
 
 \subsection{Feature Extraction}
-There are 9519 unique protein sequences in the training + validation set and 
+There are 9519 unique protein sequences in the training + validation set and 1889 unique protein sequences in the test set. The MSAs are generated using the method described above and stored in PSICOV \cite{jones2012psicov} .aln format. The following features are extracted using the MSAs.
 
+\subsubsection{PSSM and IC}
+Position Specific Scoring Matrix is a commonly used representation of patterns in biological sequences. The MSA is converted into a position probability matrix, and then the log-likelihoods of each element is taken. The information content of a PSSM gives an idea about how different the PSSM is from a uniform distribution.
+Note: Can give details of the math
+
+\subsubsection{Secondary Structure and Solvent Accessibility}
+The secondary structure is defined by the pattern of hydrogen bonds formed between the amino hydrogen and carboxyl oxygen atoms in the peptide backbone. The two most common secondary structural elements are alpha helices and beta sheets. The secondary structure gives an idea of the 3D structure of the protein.
+The solvent-accessible surface area is the surface area of a biomolecule that is accessible to a solvent.
+The PSICOV .aln file is first converted into PSI-BLAST \cite{altschul1997gapped} profile format (.mtx). PSIPRED (v4.0) and SOLVPRED (MetaPSICOV 2.0) were used to predict the 3-state secondary structure and relative solvent accessibility, respectively.
+
+\subsubsection{SPOT-1D Features}
+As a means to provide better features, SPOT-1D \cite{hanson2019improving} was used to generate the following features: solvent accessibility, half-sphere exposure, contact number, 3-state secondary structure, 8-state secondary structure, phi, psi, theta, and tau.
+
+The first step in the prediction pipeline was to get the ASCII PSSM file in PSI-BLAST format. Then, hhmake was used to generate the HHM file from the MSA. SPIDER3, DCA and CCMPRED predictions were made and stored.
+
+The second step was to predict the contact map using SPOT-Contact, which used the previous steps predictions.
+
+Finally, SPOT-1D was used to make the final predictions using all the previous files as input.
+
+\subsection{Deep Learning Model}
 
 \section{Results}
+Table of results here
 
-\subsection{Outline}
+\subsection{Experiments}
+test
 
-The document layout should follow the style of the journal concerned.
-Where appropriate, sections and subsections should be added in the
-normal way. If the class options are set correctly, warnings will be
-given if these should not be present.
+\section{Discussion}
 
-\subsection{References}
+\subsection{Case Studies}
+test
 
-The class makes various changes to the way that references are
-handled.  The class loads \textsf{natbib}, and also the
-appropriate bibliography style.  References can be made using
-the normal method; the citation should be placed before any
-punctuation, as the class will move it if using a superscript
-citation style
-\cite{Mena2000,Abernethy2003,Friedman-Hill2003,EuropeanCommission2008}.
-The use of \textsf{natbib} allows the use of the various citation
-commands of that package: \citeauthor{Abernethy2003} have shown
-something, in \citeyear{Cotton1999}, or as given by
-Ref.~\citenum{Mena2000}.  Long lists of authors will be
-automatically truncated in most article formats, but not in
-supplementary information or reviews \cite{Pople2003}. If you
-encounter problems with the citation macros, please check that
-your copy of \textsf{natbib} is up to date. The demonstration
-database file \texttt{achemso-demo.bib} shows how to complete
-entries correctly. Notice that ``\latin{et al.}'' is auto-formatted
-using the \texttt{latin} command.
+\subsection{Areas for Improvement}
+test
 
-Multiple citations to be combined into a list can be given as
-a single citation.  This uses the \textsf{mciteplus} package
-\cite{Johnson1972,*Arduengo1992,*Eisenstein2005,*Arduengo1994}.
-Citations other than the first of the list should be indicated
-with a star. If the \textsf{mciteplus} package is not installed,
-the standard bibliography tools will still work but starred
-references will be ignored. Individual references can be referred
-to using \texttt{mciteSubRef}:
-``ref.~\mciteSubRef{Eisenstein2005}''.
-
-The class also handles notes to be added to the bibliography.  These
-should be given in place in the document \bibnote{This is a note.
-    The text will be moved the the references section.  The title of the
-    section will change to ``Notes and References''.}.  As with
-citations, the text should be placed before punctuation.  A note is
-also generated if a citation has an optional note.  This assumes that
-the whole work has already been cited: odd numbering will result if
-this is not the case \cite[p.~1]{Cotton1999}.
-
-\subsection{Floats}
-
-New float types are automatically set up by the class file.  The
-means graphics are included as follows (Scheme~\ref{sch:example}).  As
-illustrated, the float is ``here'' if possible.
-\begin{scheme}
-    Your scheme graphic would go here: \texttt{.eps} format\\
-    for \LaTeX\, or \texttt{.pdf} (or \texttt{.png}) for pdf\LaTeX\\
-    \textsc{ChemDraw} files are best saved as \texttt{.eps} files:\\
-    these can be scaled without loss of quality, and can be\\
-    converted to \texttt{.pdf} files easily using \texttt{eps2pdf}.\\
-    %\includegraphics{graphic}
-    \caption{An example scheme}
-    \label{sch:example}
-\end{scheme}
-
-\begin{figure}
-    As well as the standard float types \texttt{table}\\
-    and \texttt{figure}, the class also recognises\\
-    \texttt{scheme}, \texttt{chart} and \texttt{graph}.
-    \caption{An example figure}
-    \label{fgr:example}
-\end{figure}
-
-Charts, figures and schemes do not necessarily have to be labelled or
-captioned.  However, tables should always have a title. It is
-possible to include a number and label for a graphic without any
-title, using an empty argument to the \texttt{caption}
-macro.
-
-The use of the different floating environments is not required, but
-it is intended to make document preparation easier for authors. In
-general, you should place your graphics where they make logical
-sense; the production process will move them if needed.
-
-\subsection{Math(s)}
-
-The \textsf{achemso} class does not load any particular additional
-support for mathematics.  If packages such as \textsf{amsmath} are
-required, they should be loaded in the preamble.  However,
-the basic \LaTeX\ math(s) input should work correctly without
-this.  Some inline material \( y = mx + c \) or $ 1 + 1 = 2 $
-followed by some display. \[ A = \pi r^2 \]
-
-It is possible to label equations in the usual way (Eq.~\ref{eqn:example}).
-\begin{equation}
-    \frac{\mathrm{d}}{\mathrm{d}x} \, r^2 = 2r \label{eqn:example}
-\end{equation}
-This can also be used to have equations containing graphical
-content. To align the equation number with the middle of the graphic,
-rather than the bottom, a minipage may be used.
-\begin{equation}
-    \begin{minipage}[c]{0.80\linewidth}
-        \centering
-        As illustrated here, the width of \\
-        the minipage needs to allow some  \\
-        space for the number to fit in to.
-        %\includegraphics{graphic}
-    \end{minipage}
-    \label{eqn:graphic}
-\end{equation}
-
-\section{Experimental}
-
-The usual experimental details should appear here.  This could
-include a table, which can be referenced as Table~\ref{tbl:example}.
-Notice that the caption is positioned at the top of the table.
-\begin{table}
-    \caption{An example table}
-    \label{tbl:example}
-    \begin{tabular}{ll}
-        \hline
-        Header one  & Header two  \\
-        \hline
-        Entry one   & Entry two   \\
-        Entry three & Entry four  \\
-        Entry five  & Entry five  \\
-        Entry seven & Entry eight \\
-        \hline
-    \end{tabular}
-\end{table}
-
-Adding notes to tables can be complicated.  Perhaps the easiest
-method is to generate these using the basic
-\texttt{textsuperscript} and
-\texttt{emph} macros, as illustrated (Table~\ref{tbl:notes}).
-\begin{table}
-    \caption{A table with notes}
-    \label{tbl:notes}
-    \begin{tabular}{ll}
-        \hline
-        Header one                            & Header two \\
-        \hline
-        Entry one\textsuperscript{\emph{a}}   & Entry two  \\
-        Entry three\textsuperscript{\emph{b}} & Entry four \\
-        \hline
-    \end{tabular}
-
-    \textsuperscript{\emph{a}} Some text;
-    \textsuperscript{\emph{b}} Some more text.
-\end{table}
-
-The example file also loads the optional \textsf{mhchem} package, so
-that formulas are easy to input: \{H2SO4\}
-gives \ce{H2SO4}.  See the use in the bibliography file (when using
-titles in the references section).
-
-The use of new commands should be limited to simple things which will
-not interfere with the production process.  For example,
-\texttt{mycommand} has been defined in this example,
-to give italic, mono-spaced text: \mycommand{some text}.
-
-\section{Extra information when writing JACS Communications}
-
-When producing communications for \emph{J.~Am.\ Chem.\ Soc.}, the
-class will automatically lay the text out in the style of the
-journal. This gives a guide to the length of text that can be
-accommodated in such a publication. There are some points to bear in
-mind when preparing a JACS Communication in this way.  The layout
-produced here is a \emph{model} for the published result, and the
-outcome should be taken as a \emph{guide} to the final length. The
-spacing and sizing of graphical content is an area where there is
-some flexibility in the process.  You should not worry about the
-space before and after graphics, which is set to give a guide to the
-published size. This is very dependant on the final published layout.
-
-You should be able to use the same source to produce a JACS
-Communication and a normal article.  For example, this demonstration
-file will work with both \texttt{type=article} and
-\texttt{type=communication}. Sections and any abstract are
-automatically ignored, although you will get warnings to this effect.
+\subsection{Flaws}
+test
 
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 %% The "Acknowledgement" section can be given in all manuscript
@@ -351,20 +165,12 @@ automatically ignored, although you will get warnings to this effect.
 %% environment, which will make the correct section or running title.
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 \begin{acknowledgement}
-
-    Please use ``The authors thank \ldots'' rather than ``The
-    authors would like to thank \ldots''.
-
-    The author thanks Mats Dahlgren for version one of \textsf{achemso},
-    and Donald Arseneau for the code taken from \textsf{cite} to move
-    citations after punctuation. Many users have provided feedback on the
-    class, which is reflected in all of the different demonstrations
-    shown in this document.
+    The author thanks Yashaswi Pathak for being a fruitful part of the project discussions.
 
 \end{acknowledgement}
 
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
-%% The same is true for Supporting Information, which should use the
+%% The same is true for Supporting information, which should use the
 %% suppinfo environment.
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 \begin{suppinfo}
