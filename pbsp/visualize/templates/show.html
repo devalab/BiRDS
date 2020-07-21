@@ -1,0 +1,69 @@
+<!DOCTYPE html>
+<html>
+
+<head>
+    <title>Binding Site Predictions</title>
+    <meta charset="utf-8">
+    <script src="https://3Dmol.csb.pitt.edu/build/3Dmol-min.js"></script>
+    <style>
+        #leftbox {
+            float: left;
+            width: 50%;
+            height: 800px;
+            position: relative;
+        }
+
+        #rightbox {
+            float: right;
+            width: 50%;
+            margin: auto;
+        }
+    </style>
+    <script>
+        $(function () {
+            let element = $('#leftbox');
+            let config = { backgroundColor: 'white' };
+            let viewer = $3Dmol.createViewer(element, config);
+            let protein = "{{protein}}";
+            let ligand = "{{ligand}}";
+            let selections = [{}, {}, {}];
+            "{{selections}}".split(";").forEach(function (line, idx) {
+                line.split(",").forEach(function (val) {
+                    selections[idx][val] = true;
+                });
+            });
+            let myfunc = function (idx) {
+                return function (atom) {
+                    key = atom.resi + ":" + atom.chain;
+                    return selections[idx][key];
+                }
+            }
+            $.get(protein, function (protein_data) {
+                // console.log(protein_data);
+                viewer.addModel(protein_data, "pdb");
+                viewer.setStyle({}, { cartoon: { color: 'spectrum', opacity: 0.65 } });
+                viewer.addStyle({ predicate: myfunc(0), byres: true }, { stick: { color: "green" } })
+                viewer.addStyle({ predicate: myfunc(1), byres: true }, { stick: { color: "blue" } })
+                viewer.addStyle({ predicate: myfunc(2), byres: true }, { stick: { color: "red" } })
+                viewer.zoomTo();
+                viewer.render();
+                $.get(ligand, function (ligand_data) {
+                    viewer.addModel(ligand_data, "mol2").setStyle({}, { stick: {} });
+                    viewer.render();
+                })
+            })
+        });
+    </script>
+</head>
+
+<body>
+    <div id="leftbox" class="mol-container"></div>
+    <div id="rightbox">
+        <h1>METRICS</h1>
+        {% for key, value in metrics.items() %}
+        <div><b>{{key}}</b>: {{value}}</div>
+        {% endfor %}
+    </div>
+</body>
+
+</html>
