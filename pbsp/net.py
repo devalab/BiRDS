@@ -2,7 +2,7 @@ from collections import OrderedDict
 
 import pytorch_lightning as pl
 import torch
-from torch.optim import SGD, Adam
+from torch.optim import Adam
 from torch.optim.lr_scheduler import ReduceLROnPlateau
 from torch.utils.data import DataLoader, Subset
 
@@ -10,15 +10,12 @@ from pbsp.datasets import scPDB
 from pbsp.metrics import (
     batch_loss,
     batch_metrics,
-    detector_margin_loss,
-    generator_mse_loss,
-    generator_pos_loss,
     make_figure,
     pl_weighted_loss,
     weighted_bce_loss,
     weighted_focal_loss,
 )
-from pbsp.models import BiLSTM, CGenerator, Detector, ResNet
+from pbsp.models import BiLSTM, Detector, ResNet
 
 SMOOTH = 1e-6
 
@@ -28,6 +25,10 @@ class Net(pl.LightningModule):
         super().__init__()
         self.hparams = hparams
         self.num_cpus = 10
+        if hparams.gpus != 0:
+            self.pin_memory = True
+        else:
+            self.pin_memory = False
         self.train_ds = scPDB(hparams)
         if hparams.run_tests:
             self.test_ds = scPDB(hparams, test=True)
@@ -76,6 +77,7 @@ class Net(pl.LightningModule):
             batch_size=self.hparams.batch_size,
             collate_fn=self.train_ds.collate_fn,
             num_workers=self.num_cpus,
+            pin_memory=self.pin_memory,
             shuffle=True,
         )
 
@@ -86,6 +88,7 @@ class Net(pl.LightningModule):
             batch_size=self.hparams.batch_size,
             collate_fn=self.train_ds.collate_fn,
             num_workers=self.num_cpus,
+            pin_memory=self.pin_memory,
             shuffle=False,
         )
 
@@ -95,6 +98,7 @@ class Net(pl.LightningModule):
             batch_size=self.hparams.batch_size,
             collate_fn=self.train_ds.collate_fn,
             num_workers=self.num_cpus,
+            pin_memory=self.pin_memory,
             shuffle=False,
         )
 
@@ -109,7 +113,7 @@ class Net(pl.LightningModule):
         return [optimizer], [scheduler]
 
     # learning rate warm-up
-    def optimizer_step(self, curr_epoch, batch_nb, optim, optim_idx, soc=None):
+    def optimizer_step(self, curr_epoch, batch_idx, optim, opt_idx, *args, **kwargs):
         # warm up lr
         warm_up_steps = float(16384 // self.hparams.batch_size)
         if self.trainer.global_step < warm_up_steps:
@@ -212,175 +216,11 @@ class Net(pl.LightningModule):
             default=0.2,
             help="Dropout to be applied between layers. Default: %(default)f",
         )
-        parser.add_argument("--loss", type=str, default="bce", choices=["bce", "focal"])
-        return parser
-
-
-class CGAN(pl.LightningModule):
-    def __init__(self, hparams, net):
-        super().__init__()
-        self.hparams = hparams
-        self.net = net
-        self.generator = CGenerator(self.net.embedding_dim, hparams)
-
-    def forward(self, X, lengths):
-        # [Batch, hidden_sizes[-1], Max_length]
-        output = self.net.embedding_model(X, lengths)
-        # Return the embeddings as [Batch, Max_length, hidden_sizes[-1]]
-        return output.transpose(1, 2)
-
-    def on_after_backward(self):
-        return self.net.on_after_backward()
-
-    def train_dataloader(self):
-        return self.net.train_dataloader()
-
-    def val_dataloader(self):
-        return self.net.val_dataloader()
-
-    def test_dataloader(self):
-        return self.net.test_dataloader()
-
-    def configure_optimizers(self):
-        if self.hparams.generator_opt == "SGD":
-            opt_g = SGD(self.generator.parameters(), lr=self.hparams.cgan_lr)
-        else:
-            opt_g = Adam(self.generator.parameters(), lr=self.hparams.cgan_lr)
-
-        if self.hparams.detector_opt == "SGD":
-            opt_d = SGD(self.net.detector.parameters(), lr=self.hparams.cgan_lr)
-        else:
-            opt_d = Adam(self.net.detector.parameters(), lr=self.hparams.cgan_lr)
-        return [opt_g, opt_d]
-
-    def training_step(self, batch, batch_idx, optimizer_idx):
-        data, meta = batch
-        embed = self(data["feature"], meta["length"])
-        mask = []
-        for i, yt in enumerate(data["label"]):
-            mask.append(torch.eq(yt[: meta["length"][i]], 0))
-
-        # Train Generator
-        if optimizer_idx == 0:
-            generated_embed = self.generator(embed)
-            y_fake_pred = self.net.detector(generated_embed)
-            g_pos_loss = batch_loss(
-                y_fake_pred, data["label"], meta["length"], generator_pos_loss
-            )
-            if self.hparams.use_mse_loss:
-                g_mse_loss = batch_loss(
-                    generated_embed,
-                    embed,
-                    meta["length"],
-                    generator_mse_loss,
-                    mask=mask,
-                )
-                g_loss = g_pos_loss + self.hparams.generator_lambda * g_mse_loss
-                log_dict = {
-                    "g_loss": g_loss,
-                    "g_pos_loss": g_pos_loss,
-                    "g_mse_loss": g_mse_loss,
-                }
-            else:
-                g_loss = g_pos_loss
-                log_dict = {"g_loss": g_loss}
-            tqdm_dict = {"g_loss": g_loss}
-            return OrderedDict(
-                {"loss": g_loss, "progress_bar": tqdm_dict, "log": log_dict}
-            )
-
-        # Train detector
-        if optimizer_idx == 1:
-            y_pred = self.net.detector(embed)
-            generated_embed = self.generator(embed).detach()
-            net_loss = batch_loss(
-                y_pred,
-                data["label"],
-                meta["length"],
-                self.net.loss_func,
-                pos_weight=self.net.train_ds.pos_weight,
-            )
-            if self.hparams.use_margin_loss:
-                y_fake_pred = self.net.detector(generated_embed)
-                mar_loss = batch_loss(
-                    y_fake_pred, data["label"], meta["length"], detector_margin_loss
-                )
-                d_loss = net_loss + self.hparams.detector_lambda * mar_loss
-                log_dict = {
-                    "net_loss": net_loss,
-                    "mar_loss": mar_loss,
-                    "d_loss": d_loss,
-                }
-            else:
-                d_loss = net_loss
-                log_dict = {"d_loss": d_loss}
-            tqdm_dict = {"d_loss": d_loss}
-            return OrderedDict(
-                {"loss": d_loss, "progress_bar": tqdm_dict, "log": log_dict}
-            )
-
-    def validation_step(self, batch, batch_idx):
-        return self.net.val_test_step(batch, batch_idx, "v_")
-
-    def validation_epoch_end(self, outputs):
-        return self.net.validation_epoch_end(outputs)
-
-    def test_step(self, batch, batch_idx):
-        return self.net.val_test_step(batch, batch_idx, "t_")
-
-    def test_epoch_end(self, outputs):
-        return self.net.validation_epoch_end(outputs)
-
-    @staticmethod
-    def add_class_specific_args(parser):
         parser.add_argument(
-            "--cgan-epochs",
-            metavar="EPOCHS",
-            default=50,
-            type=int,
-            help="Default: %(default)d",
-        )
-        parser.add_argument(
-            "--cgan-lr",
-            default=0.0002,
-            type=float,
-            help="CGAN Learning Rate. Default: %(default)f",
-        )
-        parser = CGenerator.add_class_specific_args(parser)
-        parser.add_argument(
-            "--generator-opt",
-            metavar="OPTIMIZER",
-            default="Adam",
+            "--loss",
             type=str,
-            choices=["Adam", "SGD"],
-            help="Optimizer to be used by generator",
+            default="bce",
+            choices=["bce", "focal"],
+            help="Loss function to use. Default: %(default)s",
         )
-        parser.add_argument(
-            "--detector-opt",
-            metavar="OPTIMIZER",
-            default="Adam",
-            choices=["Adam", "SGD"],
-            type=str,
-            help="Optimizer to be used by detector",
-        )
-        parser.add_argument(
-            "--generator-lambda", default=1.0, type=float, help="Default: %(default)f"
-        )
-        parser.add_argument(
-            "--detector-lambda", type=float, default=1.0, help="Default: %(default)f"
-        )
-        parser.add_argument(
-            "--no-mse-loss",
-            dest="use_mse_loss",
-            action="store_false",
-            help="Default: %(default)s",
-        )
-        parser.set_defaults(use_mse_loss=True)
-        parser.add_argument(
-            "--no-margin-loss",
-            dest="use_margin_loss",
-            action="store_false",
-            help="Default: %(default)s",
-        )
-        parser.set_defaults(use_margin_loss=True)
         return parser

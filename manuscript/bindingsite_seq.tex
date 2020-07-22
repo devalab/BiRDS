@@ -13,7 +13,7 @@
 %% servers.
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 % \usepackage[version=3]{mhchem} % Formula subscripts using \ce{}
-% \usepackage{hyperref}
+\usepackage{hyperref}
 
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 %% If issues arise when submitting your manuscript, you may want to
@@ -53,8 +53,8 @@
 %% supplied. These should be set up here, and will be printed after
 %% the title and author information, if needed.
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
-\abbreviations{IR,NMR,UV}
-\keywords{American Chemical Society, \LaTeX}
+% \abbreviations{IR,NMR,UV}
+% \keywords{American Chemical Society, \LaTeX}
 
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 %% The manuscript does not need to include \maketitle, which is
@@ -93,17 +93,21 @@
 %% if an abstract is not used by the target journal.
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 \begin{abstract}
-    With improvements in sequencing methods, the number of protein sequences available is rapidly increasing. However, because of the high cost and labour-intensive nature of structural experiments, the gap between the number of protein sequences and solved structures is widening rapidly. One of the earliest steps in drug discovery is identifying the active binding site of the target protein. Deep Learning has been used in a variety of biochemical tasks and has been hugely successful. In this paper, a residual neural network is implemented to predict a protein's most active binding site using features extracted from just the primary sequence. (Add information of results)
+    \noindent\textbf{Motivation}: Protein-drug interactions play important roles in many biological processes. The prediction of the active binding site of a protein helps discover such interactions. The tertiary structure of a protein determines the binding sites available to the drug molecule. But the methods for structure determination are labour-intensive and time-consuming. Hence it becomes important to make predictions using the sequence alone. Deep Learning has been used in a variety of biochemical tasks and has been hugely successful. In this paper, a residual neural network is implemented to predict a protein's most active binding site using features extracted from just the sequence.
+
+    \noindent\textbf{Results}:
+
+    \noindent\textbf{Availability}: \href{https://github.com/crvineeth97/protein-binding-site-prediction}{https://github.com/crvineeth97/protein-binding-site-prediction}
 \end{abstract}
 
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 %% Start the main part of the manuscript here.
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 \section{Introduction}
-
+\quad The rapid speed of sequencing attained with modern DNA sequencing technology has been instrumental in the sequencing of complete DNA sequences, which leads to faster indirect sequencing of proteins. Although there have been improvements in the determination of the protein three-dimensional structure by techniques such as X-ray crystallography and NMR Spectroscopy, the gap between the number of known sequences (333,201,385 as of July, 2020) and the number of known structures (154,706 as of July, 2020) is increasing rapidly. Proteins perform a vast array of functions within organisms and the tertiary structure of a protein can provide important clues about these functions. There have been several efforts made in this direction. Google's DeepMind team designed a deep learning model to predict the 3D structure of a protein from its sequence. Drug design is the process of finding new medications based on the knowledge of a biological target such as a protein. The identification of the active binding site of a protein is an important step in drug design. Predicting the binding site of a protein from sequence alone becomes critical when the 3D structure of the protein is not available. (Write more)
 
 \section{Dataset}
-For the training and validation of the model, the sc-PDB\cite{desaphy2015sc} dataset (v 2017) is used. The database consists of druggable binding sites of the Protein Data Bank along with prepared protein structures. Thus each sample in the dataset contains one ligand, one protein, and one site, all stored in mol2 format. Since the predictions are made from the sequence alone, the provided mol2 files are reindexed to match the sequence downloaded from RCSB. This way, the specific binding residues can be labelled in the sequence. Some PDB IDs are obsoleted, and hence the sequences were manually tracked on RCSB, and the corresponding sequences were used.
+\quad For the training and validation of the model, the sc-PDB\cite{desaphy2015sc} dataset (v 2017) is used. The database consists of druggable binding sites of the Protein Data Bank along with prepared protein structures. Thus each sample in the dataset contains one ligand, one protein, and one site, all stored in mol2 format. Since the predictions are made from the sequence alone, the provided mol2 files are reindexed to match the sequence downloaded from RCSB. This way, the specific binding residues can be labelled in the sequence. Some PDB IDs are obsoleted, and hence the sequences were manually tracked on RCSB, and the corresponding sequences were used.
 
 Needleman-Wunsch dynamic programming for pairwise protein sequence alignment implemented using a modified version of Zhanglab's NW-Align program\cite{NWAlign} was used to reindex a protein according to its RCSB sequence.
 
@@ -114,25 +118,25 @@ The test set is constructed using all PDBs from 2018 onwards, till 28th February
 
 \section{Methods}
 \subsection{MSA Generation}
-As described in the introduction, the number of protein sequences is rapidly exploding. Collections of multiple homologous sequences (called Multiple Sequence Alignments or MSAs) can provide critical information to the modelling of the structure and function of unknown proteins. DeepMSA \cite{zhang2020deepmsa} is an open-source method for sensitive MSA construction, which has homologous sequences and alignments created from multiple sources of databases through complementary hidden Markov model algorithms.
+\quad As described in the introduction, the number of protein sequences is rapidly exploding. Collections of multiple homologous sequences (called Multiple Sequence Alignments or MSAs) can provide critical information to the modelling of the structure and function of unknown proteins. DeepMSA \cite{zhang2020deepmsa} is an open-source method for sensitive MSA construction, which has homologous sequences and alignments created from multiple sources of databases through complementary hidden Markov model algorithms.
 
 The search is done in 2 stages. In stage 1, the query sequence is searched against the UniClust30 \cite{mirdita2017uniclust} database using HHBlits from HH-suite\cite{remmert2012hhblits} (v2.0.16). If the number of effective sequences is $<$ 128, Stage 2 is performed where the query sequence is searched against the Uniref50 \cite{suzek2015uniref} database using JackHMMER from HMMER \cite{johnson2010hidden} (v3.1b2). Full-length sequences are extracted from the JackHMMER raw hits and converted into a custom HHBlits format database. HHBlits is applied to jump-start the search from Stage 1 sequence MSA against this custom database.
 
 
 \subsection{Feature Extraction}
-There are 9519 unique protein sequences in the training + validation set and 1889 unique protein sequences in the test set. The MSAs are generated using the method described above and stored in PSICOV \cite{jones2012psicov} .aln format. The following features are extracted using the MSAs.
+\quad There are 9519 unique protein sequences in the training + validation set and 1889 unique protein sequences in the test set. The MSAs are generated using the method described above and stored in PSICOV \cite{jones2012psicov} .aln format. The following features are extracted using the MSAs.
 
 \subsubsection{PSSM and IC}
-Position Specific Scoring Matrix is a commonly used representation of patterns in biological sequences. The MSA is converted into a position probability matrix, and then the log-likelihoods of each element is taken. The information content of a PSSM gives an idea about how different the PSSM is from a uniform distribution.
+\quad Position Specific Scoring Matrix is a commonly used representation of patterns in biological sequences. The MSA is converted into a position probability matrix, and then the log-likelihoods of each element is taken. The information content of a PSSM gives an idea about how different the PSSM is from a uniform distribution.
 Note: Can give details of the math
 
 \subsubsection{Secondary Structure and Solvent Accessibility}
-The secondary structure is defined by the pattern of hydrogen bonds formed between the amino hydrogen and carboxyl oxygen atoms in the peptide backbone. The two most common secondary structural elements are alpha helices and beta sheets. The secondary structure gives an idea of the 3D structure of the protein.
+\quad The secondary structure is defined by the pattern of hydrogen bonds formed between the amino hydrogen and carboxyl oxygen atoms in the peptide backbone. The two most common secondary structural elements are alpha helices and beta sheets. The secondary structure gives an idea of the 3D structure of the protein.
 The solvent-accessible surface area is the surface area of a biomolecule that is accessible to a solvent.
 The PSICOV .aln file is first converted into PSI-BLAST \cite{altschul1997gapped} profile format (.mtx). PSIPRED (v4.0) and SOLVPRED (MetaPSICOV 2.0) were used to predict the 3-state secondary structure and relative solvent accessibility, respectively.
 
 \subsubsection{SPOT-1D Features}
-As a means to provide better features, SPOT-1D \cite{hanson2019improving} was used to generate the following features: solvent accessibility, half-sphere exposure, contact number, 3-state secondary structure, 8-state secondary structure, phi, psi, theta, and tau.
+\quad As a means to provide better features, SPOT-1D \cite{hanson2019improving} was used to generate the following features: solvent accessibility, half-sphere exposure, contact number, 3-state secondary structure, 8-state secondary structure, phi, psi, theta, and tau.
 
 The first step in the prediction pipeline was to get the ASCII PSSM file in PSI-BLAST format. Then, hhmake was used to generate the HHM file from the MSA. SPIDER3, DCA and CCMPRED predictions were made and stored.
 
@@ -141,23 +145,31 @@ The second step was to predict the contact map using SPOT-Contact, which used th
 Finally, SPOT-1D was used to make the final predictions using all the previous files as input.
 
 \subsection{Deep Learning Model}
+\quad Residual neural networks are immensely popular in image recognition and also have been gaining traction in the field of computational chemistry as well. A variety of deep learning models were tested but the 1D Resnets proved to be the best model. A Resnet consists of multiple basic blocks stacked on top of each other 
 
 \section{Results}
-Table of results here
+\quad Table of results here
+
+\subsection{Evaluation Metrics}
+\subsubsection{Accuracy}
+\subsubsection{Precision, Recall and F1-score}
+\subsubsection{MCC}
+\subsubsection{DCC}
 
 \subsection{Experiments}
-test
+\quad test
 
 \section{Discussion}
+\quad
 
 \subsection{Case Studies}
-test
+\quad test
 
 \subsection{Areas for Improvement}
-test
+\quad test
 
 \subsection{Flaws}
-test
+\quad test
 
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 %% The "Acknowledgement" section can be given in all manuscript

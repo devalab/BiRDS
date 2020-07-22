@@ -44,6 +44,7 @@ def confusion_matrix_figure(cm, class_names):
 
 
 def dcc_figure(values):
+    values = np.nan_to_num(values, nan=20000, posinf=20000, neginf=20000)
     figure = plt.figure(figsize=(8, 8))
     x = np.linspace(0, 20, 1000)
     y = np.array([(values <= el).sum() / len(values) * 100 for el in x])
