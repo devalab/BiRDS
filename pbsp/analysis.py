@@ -1,7 +1,7 @@
 import os
+from collections import defaultdict
 
 import matplotlib.pyplot as plt
-from collections import defaultdict
 
 
 def pie_chart(labels, sizes, explode):

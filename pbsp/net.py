@@ -1,3 +1,4 @@
+from argparse import Namespace
 from collections import OrderedDict
 
 import pytorch_lightning as pl
@@ -26,6 +27,9 @@ SMOOTH = 1e-6
 class Net(pl.LightningModule):
     def __init__(self, hparams):
         super().__init__()
+        # Fixes loading from a model checkpoint
+        if type(hparams) is dict:
+            hparams = Namespace(**hparams)
         self.hparams = hparams
         self.num_cpus = 10
         self.train_ds = scPDB(hparams)

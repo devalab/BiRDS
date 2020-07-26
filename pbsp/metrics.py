@@ -34,8 +34,8 @@ def confusion_matrix_figure(cm, class_names):
     # Use red text if squares are dark; otherwise black.
     threshold = cm.max() / 2.0
     for i, j in itertools.product(range(cm.shape[0]), range(cm.shape[1])):
-        color = "red" if cm[i, j] > threshold else "black"
-        plt.text(j, i, cm[i, j], horizontalalignment="center", color=color)
+        color = "black" if cm[i, j] > threshold else "black"
+        plt.text(j, i, cm[i, j], horizontalalignment="center", color=color, fontsize=20)
 
     plt.tight_layout()
     plt.ylabel("True label")
