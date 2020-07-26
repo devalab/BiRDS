@@ -126,7 +126,10 @@ class scPDB(Dataset):
             tmp = glob(os.path.join(self.msa_dir, "*", name + "_?.npy"))
         if tmp == []:
             tmp = glob(os.path.join(self.raw_dir, "*", name + "_?.npy"))
-        for file in tqdm(sorted(tmp)):
+        tmp = sorted(tmp)
+        if self.hparams.progress_bar_refresh_rate != 0:
+            tmp = tqdm(tmp)
+        for file in tmp:
             pis, chain = file.split("/")[-2:]
             chain = chain[-5:-4]
             mapping[pis + "/" + chain] = np.load(file).astype(np.float32)

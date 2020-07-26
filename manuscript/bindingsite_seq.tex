@@ -28,7 +28,7 @@
 %% when typesetting).
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 \newcommand*\mycommand[1]{\texttt{\emph{#1}}}
-
+\renewcommand{\thefootnote}{\fnsymbol{footnote}}
 
 \author{Vineeth R. Chelur}
 \author{U. Deva Priyakumar}
@@ -93,50 +93,63 @@
 %% if an abstract is not used by the target journal.
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 \begin{abstract}
-    \noindent\textbf{Motivation}: Protein-drug interactions play important roles in many biological processes. The prediction of the active binding site of a protein helps discover such interactions. The tertiary structure of a protein determines the binding sites available to the drug molecule. But the methods for structure determination are labour-intensive and time-consuming. Hence it becomes important to make predictions using the sequence alone. Deep Learning has been used in a variety of biochemical tasks and has been hugely successful. In this paper, a residual neural network is implemented to predict a protein's most active binding site using features extracted from just the sequence.
+  \noindent\textbf{Motivation}: Protein-drug interactions play important roles in many biological processes. The prediction of the active binding site of a protein helps discover such interactions. The tertiary structure of a protein determines the binding sites available to the drug molecule. But the methods for structure determination are labour-intensive and time-consuming. Hence it becomes important to make predictions using the sequence alone. Deep Learning has been used in a variety of biochemical tasks and has been hugely successful. In this paper, a residual neural network is implemented to predict a protein's most active binding site using features extracted from just the sequence.
 
-    \noindent\textbf{Results}:
+  \noindent\textbf{Results}: The model achieved a Matthew's Correlation Coefficient of 0.54 and an accuracy of 93\% on the validation set. On the test set, an MCC of 0.51 and an accuracy of 91\% was obtained.
 
-    \noindent\textbf{Availability}: \href{https://github.com/crvineeth97/protein-binding-site-prediction}{https://github.com/crvineeth97/protein-binding-site-prediction}
+  \noindent\textbf{Implementation}: \href{https://github.com/crvineeth97/protein-binding-site-prediction}{https://github.com/crvineeth97/protein-binding-site-prediction}
 \end{abstract}
 
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 %% Start the main part of the manuscript here.
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 \section{Introduction}
-\quad The rapid speed of sequencing attained with modern DNA sequencing technology has been instrumental in the sequencing of complete DNA sequences, which leads to faster indirect sequencing of proteins. Although there have been improvements in the determination of the protein three-dimensional structure by techniques such as X-ray crystallography and NMR Spectroscopy, the gap between the number of known sequences (333,201,385 as of July, 2020) and the number of known structures (154,706 as of July, 2020) is increasing rapidly. Proteins perform a vast array of functions within organisms and the tertiary structure of a protein can provide important clues about these functions. There have been several efforts made in this direction. Google's DeepMind team designed a deep learning model to predict the 3D structure of a protein from its sequence. Drug design is the process of finding new medications based on the knowledge of a biological target such as a protein. The identification of the active binding site of a protein is an important step in drug design. Predicting the binding site of a protein from sequence alone becomes critical when the 3D structure of the protein is not available. (Write more)
+\quad The rapid speed of sequencing attained with modern DNA sequencing technology has been instrumental in the sequencing of complete DNA sequences, which leads to faster indirect sequencing of proteins. Although there have been improvements in the determination of the protein three-dimensional structure by techniques such as X-ray crystallography and NMR Spectroscopy, the gap between the number of known sequences (333,201,385 as of July, 2020) and the number of known structures (154,706 as of July, 2020) is increasing rapidly. Proteins perform a vast array of functions within organisms and the tertiary structure of a protein can provide important clues about these functions.
+
+Deep Learning is a subfield of machine learning based on artificial neural networks with feature learning. When a deep learning model is fed large amounts of data, it can automatically discover the representations needed for feature detection or classification. Deep learning has been hugely successful in all fields of Natural Sciences, including, but not limited to, binding affinity predictions, protein contact map predictions, and protein-structure predictions. For example, Google's DeepMind team designed a deep learning model, called AlphaFold \cite{senior2020improved}, which represents a considerable advance in protein-structure prediction from sequence.
+
+In the process of drug design, new medications are found based on the knowledge of a biological target such as a protein. The identification of the potential active binding site of a protein is an important step in drug design. Predicting the binding site of a protein based on sequence alone becomes critical when the three-dimensional structure of the protein is not available.
+
+In this paper, a deep residual neural network is used to make the binary prediction of whether an amino acid residue of the sequence belongs to the binding site or not.
 
 \section{Dataset}
-\quad For the training and validation of the model, the sc-PDB\cite{desaphy2015sc} dataset (v 2017) is used. The database consists of druggable binding sites of the Protein Data Bank along with prepared protein structures. Thus each sample in the dataset contains one ligand, one protein, and one site, all stored in mol2 format. Since the predictions are made from the sequence alone, the provided mol2 files are reindexed to match the sequence downloaded from RCSB. This way, the specific binding residues can be labelled in the sequence. Some PDB IDs are obsoleted, and hence the sequences were manually tracked on RCSB, and the corresponding sequences were used.
+\quad For the training and validation of the model, the sc-PDB\cite{desaphy2015sc} dataset (v 2017) is used. The database consists of druggable binding sites of the Protein Data Bank along with prepared protein structures. Thus each sample in the dataset contains the three-dimensional structure of one ligand, one protein, and one site, all stored in mol2 format.
 
-Needleman-Wunsch dynamic programming for pairwise protein sequence alignment implemented using a modified version of Zhanglab's NW-Align program\cite{NWAlign} was used to reindex a protein according to its RCSB sequence.
+Typically, the complete structure of a protein is unavailable due to missing residues and hence the full sequence of the protein is obtained from RCSB \cite{burley2019rcsb} website\footnote{Some PDBs in the dataset were obsoleted, and hence the sequences were manually tracked on RCSB, and the corresponding sequences were used. List of obseleted PDBs is provided in Supporting Information}. A one-to-one mapping of the amino acid in the sequence to the one in the protein mol2 file is required, to know which amino acid belongs to a binding site. This is done by first extracting the protein sequence from the 3D structure. Next, Needleman-Wunsch dynamic programming algorithm is used to align the sequence extracted from the structure file to the downloaded RCSB sequence. This algorithm is implemented using a modified version of Zhanglab's NW-Align program\cite{NWAlign}. The protein structure file is then reindexed, based on this alignment, to match the indexing of the RCSB sequence. This way, the specific binding residues can be labelled in the RCSB sequence.
 
-The training set consists of 17,594 PDB structures with 28,959 sequences (9519 unique sequences), originating from 1240 organisms, the most abundant being human(28.26\%), (Add the rest here). The dataset was diverse and contained proteins from 1996 different PFAM families (Most abundant needs to be added) and 856 PFAM clans. The data from sc-PDB is split into 10-folds (each containing 1586 structures), based on Uniprot ID, exactly like Kalasanty\cite{stepniewska2020improving}.
 
-The test set is constructed using all PDBs from 2018 onwards, till 28th February 2020. All PDBs available during this period and having at least one ligand are considered. These were then run through IChem Toolkit \cite{da2018ichem} to generate a dataset similar to the sc-PDB dataset. The test set consists of 2,274 PDB structures with 3,434 sequences (1889 unique sequences), originating from 548 organisms, the most abundant being human(23.76\%). The test set contained proteins from 882 PFAM families and 452 PFAM clans.
+The training set consists of 17,594 PDB structures with 28,959 sequences (9519 unique sequences), originating from 1240 organisms, the most abundant being human(28.26\%), (Add the rest here). The dataset was diverse and contained proteins from 1996 different PFAM families (Most abundant needs to be added) and 856 PFAM clans.
+
+This data is split into 10-folds (each containing 1586 structures), based on Uniprot ID, exactly like the paper on Kalasanty\cite{stepniewska2020improving}. This ensures that there is no data leakage between the validation and training set, by putting all structures of a single protein in the same fold.
+
+The test set is constructed using all PDBs from 2018 onwards, till 28th February 2020. All PDBs available during this period and having at least one ligand are considered. These are then run through the IChem Toolkit \cite{da2018ichem} to generate a dataset similar to the training set.
+
+The test set consists of 2,274 PDB structures with 3,434 sequences (1889 unique sequences), originating from 548 organisms, the most abundant being human(23.76\%). The test set contained proteins from 882 PFAM families and 452 PFAM clans.
 
 
 \section{Methods}
 \subsection{MSA Generation}
-\quad As described in the introduction, the number of protein sequences is rapidly exploding. Collections of multiple homologous sequences (called Multiple Sequence Alignments or MSAs) can provide critical information to the modelling of the structure and function of unknown proteins. DeepMSA \cite{zhang2020deepmsa} is an open-source method for sensitive MSA construction, which has homologous sequences and alignments created from multiple sources of databases through complementary hidden Markov model algorithms.
+\quad Collections of multiple homologous sequences (called Multiple Sequence Alignments or MSAs) can provide critical information for the modelling of the structure and function of unknown proteins. DeepMSA \cite{zhang2020deepmsa} is an open-source method for sensitive MSA construction, which has homologous sequences and alignments created from multiple sources of databases through complementary hidden Markov model algorithms.
 
-The search is done in 2 stages. In stage 1, the query sequence is searched against the UniClust30 \cite{mirdita2017uniclust} database using HHBlits from HH-suite\cite{remmert2012hhblits} (v2.0.16). If the number of effective sequences is $<$ 128, Stage 2 is performed where the query sequence is searched against the Uniref50 \cite{suzek2015uniref} database using JackHMMER from HMMER \cite{johnson2010hidden} (v3.1b2). Full-length sequences are extracted from the JackHMMER raw hits and converted into a custom HHBlits format database. HHBlits is applied to jump-start the search from Stage 1 sequence MSA against this custom database.
+The search is done in 2 stages. In stage 1, the query sequence is searched against the UniClust30 \cite{mirdita2017uniclust} database using HHBlits from HH-suite\cite{remmert2012hhblits} (v2.0.16). If the number of effective sequences is $<$ 128, Stage 2 is performed where the query sequence is searched against the Uniref50 \cite{suzek2015uniref} database using JackHMMER from HMMER \cite{johnson2010hidden} (v3.1b2). Full-length sequences are extracted from the JackHMMER raw hits and converted into a custom HHBlits format database. HHBlits is then applied to jump-start the search from Stage 1 sequence MSA against this custom database.
 
 
 \subsection{Feature Extraction}
-\quad There are 9519 unique protein sequences in the training + validation set and 1889 unique protein sequences in the test set. The MSAs are generated using the method described above and stored in PSICOV \cite{jones2012psicov} .aln format. The following features are extracted using the MSAs.
+\quad There are 9519 unique protein sequences in the sc-PDB dataset and 1889 unique protein sequences in the test set. The MSAs are generated for these sequences using the method described above and stored in PSICOV \cite{jones2012psicov} .aln format. The following features are extracted from the generated MSAs.
 
 \subsubsection{PSSM and IC}
-\quad Position Specific Scoring Matrix is a commonly used representation of patterns in biological sequences. The MSA is converted into a position probability matrix, and then the log-likelihoods of each element is taken. The information content of a PSSM gives an idea about how different the PSSM is from a uniform distribution.
+\quad Position Specific Scoring Matrix (PSSM) is a commonly used representation of patterns in biological sequences. The MSA is converted into a position probability matrix which tells the probability of an amino acid occurring at a specific position in the protein sequence. (Check what Easel does for making the PSSM)
+
+The information content (IC) of a PSSM gives an idea about how different the PSSM is from a uniform distribution.
 Note: Can give details of the math
 
 \subsubsection{Secondary Structure and Solvent Accessibility}
-\quad The secondary structure is defined by the pattern of hydrogen bonds formed between the amino hydrogen and carboxyl oxygen atoms in the peptide backbone. The two most common secondary structural elements are alpha helices and beta sheets. The secondary structure gives an idea of the 3D structure of the protein.
-The solvent-accessible surface area is the surface area of a biomolecule that is accessible to a solvent.
-The PSICOV .aln file is first converted into PSI-BLAST \cite{altschul1997gapped} profile format (.mtx). PSIPRED (v4.0) and SOLVPRED (MetaPSICOV 2.0) were used to predict the 3-state secondary structure and relative solvent accessibility, respectively.
+\quad The secondary structure is defined by the pattern of hydrogen bonds formed between the amino hydrogen and carboxyl oxygen atoms in the peptide backbone. This gives an idea about the three-dimensional structure of the protein. The secondary structural elements are alpha helices, beta sheets and turns. PSIPRED (v4.0) \cite{jones1999protein} is used to predict the probability of each state of the 3-state secondary structure for every amino acid in the sequence.
+
+The solvent-accessible surface area is the surface area of a biomolecule that is accessible to a solvent. SOLVPRED from MetaPSICOV 2.0\cite{jones2015metapsicov} is used to predict the relative solvent accessibility (RSA) of every amino acid in the sequence. RSA can be calculated as \\ ${RSA} = {ASA} / {MaxASA}$, where ASA is the solvent accessible surface area and MaxASA is the maximum possible solvent accessible surface area for the amino acid residue.
 
 \subsubsection{SPOT-1D Features}
-\quad As a means to provide better features, SPOT-1D \cite{hanson2019improving} was used to generate the following features: solvent accessibility, half-sphere exposure, contact number, 3-state secondary structure, 8-state secondary structure, phi, psi, theta, and tau.
+\quad As a means to provide better features, SPOT-1D \cite{hanson2019improving} was used to generate the following features: solvent accessibility, half-sphere exposure, contact number, 3-state secondary structure, 8-state secondary structure, and phi, psi, theta and tau torsion angles.
 
 The first step in the prediction pipeline was to get the ASCII PSSM file in PSI-BLAST format. Then, hhmake was used to generate the HHM file from the MSA. SPIDER3, DCA and CCMPRED predictions were made and stored.
 
@@ -145,7 +158,7 @@ The second step was to predict the contact map using SPOT-Contact, which used th
 Finally, SPOT-1D was used to make the final predictions using all the previous files as input.
 
 \subsection{Deep Learning Model}
-\quad Residual neural networks are immensely popular in image recognition and also have been gaining traction in the field of computational chemistry as well. A variety of deep learning models were tested but the 1D Resnets proved to be the best model. A Resnet consists of multiple basic blocks stacked on top of each other 
+\quad Residual neural networks are immensely popular in image recognition and also have been gaining traction in the field of computational chemistry as well. A variety of deep learning models were tested but 1D Resnets proved to be the best model. A Resnet consists of multiple basic blocks stacked on top of each other
 
 \section{Results}
 \quad Table of results here
@@ -177,7 +190,7 @@ Finally, SPOT-1D was used to make the final predictions using all the previous f
 %% environment, which will make the correct section or running title.
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 \begin{acknowledgement}
-    The author thanks Yashaswi Pathak for being a fruitful part of the project discussions.
+  The author thanks Yashaswi Pathak for being a fruitful part of the project discussions.
 
 \end{acknowledgement}
 
@@ -187,9 +200,9 @@ Finally, SPOT-1D was used to make the final predictions using all the previous f
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 \begin{suppinfo}
 
-    This will usually read something like: ``Experimental procedures and
-    characterization data for all new compounds. The class will
-    automatically add a sentence pointing to the information on-line:
+  This will usually read something like: ``Experimental procedures and
+  characterization data for all new compounds. The class will
+  automatically add a sentence pointing to the information on-line:
 
 \end{suppinfo}
 

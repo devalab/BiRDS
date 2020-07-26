@@ -11,7 +11,7 @@ from pbsp.net import Net
 class MyModelCheckpoint(pl.callbacks.ModelCheckpoint):
     def format_checkpoint_name(self, epoch, metrics, ver=None):
         if self.filename == "{epoch}":
-            self.filename = "{epoch}-{v_mcc:.3f}-{v_acc:.3f}-{v_f1:.3f}"
+            self.filename = "{epoch}-{v_mcc:.3f}-{v_acc:.3f}-{v_loss:.3f}"
         return super().format_checkpoint_name(epoch, metrics, ver)
 
 
@@ -27,7 +27,6 @@ def main(hparams):
     if hparams.progress_bar_refresh_rate is None:
         hparams.progress_bar_refresh_rate = 64 // bs
     const_params = {
-        "max_epochs": hparams.net_epochs,
         "row_log_interval": 64 // bs,
         "log_save_interval": 256 // bs,
         "gradient_clip_val": 0,
@@ -48,15 +47,12 @@ def main(hparams):
         profiler=True,
         accumulate_grad_batches=accumulate_grad_batches,
         deterministic=True,
+        weights_summary="full",
         # track_grad_norm=2,
         # fast_dev_run=True,
         # overfit_pct=0.05,
     )
-
-    if hparams.resume_from_checkpoint:
-        net = Net.load_from_checkpoint(hparams.resume_from_checkpoint)
-    else:
-        net = Net(hparams)
+    net = Net(hparams)
 
     trainer.fit(net)
 
@@ -96,7 +92,7 @@ def parse_arguments():
         help="Name of the experiment. Each experiment can have multiple versions inside it. Default: %(default)ss",
     )
     trainer_group.add_argument(
-        "--net-epochs",
+        "--max-epochs",
         metavar="EPOCHS",
         default=100,
         type=int,
@@ -116,14 +112,6 @@ def parse_arguments():
     )
     trainer_group.add_argument("--no-test", dest="run_tests", action="store_false")
     trainer_group.set_defaults(run_tests=False)
-    trainer_group.add_argument(
-        "--cgan",
-        dest="use_cgan",
-        action="store_true",
-        help="Train a Complementary GAN after main net training. Default: %(default)s",
-    )
-    trainer_group.add_argument("--no-cgan", dest="use_cgan", action="store_false")
-    trainer_group.set_defaults(use_cgan=False)
     trainer_group.add_argument(
         "--resume-from-checkpoint",
         metavar="PATH",

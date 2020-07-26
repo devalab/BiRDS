@@ -16,6 +16,7 @@ from pbsp.metrics import (
     weighted_focal_loss,
 )
 from pbsp.models import BiLSTM, Detector, ResNet
+from argparse import Namespace
 
 SMOOTH = 1e-6
 
@@ -23,6 +24,9 @@ SMOOTH = 1e-6
 class Net(pl.LightningModule):
     def __init__(self, hparams):
         super().__init__()
+        if type(hparams) is dict:
+            hparams = Namespace(**hparams)
+        # torch.autograd.set_detect_anomaly(True)
         self.hparams = hparams
         self.num_cpus = 10
         if hparams.gpus != 0:
