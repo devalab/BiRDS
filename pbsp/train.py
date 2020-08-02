@@ -4,8 +4,8 @@ from argparse import ArgumentParser, Namespace
 import pytorch_lightning as pl
 
 from pbsp.datasets import scPDB
-from pbsp.models import BiLSTM, ResNet  # noqa: F401
-from pbsp.net import CGAN, Net
+from pbsp.models import ResNet  # noqa: F401
+from pbsp.net import Net
 
 
 class MyModelCheckpoint(pl.callbacks.ModelCheckpoint):
@@ -18,9 +18,8 @@ class MyModelCheckpoint(pl.callbacks.ModelCheckpoint):
 def main(hparams):
     pl.seed_everything(hparams.seed)
     # Logging to HOME so that all experiments are available for viewing on Cluster
-    save_dir = os.getenv("HOME")
     logger = pl.loggers.TestTubeLogger(
-        save_dir=save_dir, name="logs", create_git_tag=True
+        save_dir=hparams.weights_save_path, name=hparams.exp_name, create_git_tag=True
     )
     checkpoint_callback = MyModelCheckpoint(
         monitor="v_mcc", verbose=True, save_top_k=3, mode="max",
@@ -36,8 +35,8 @@ def main(hparams):
     }
     hparams = Namespace(**vars(hparams), **const_params)
     if not hparams.resume_from_checkpoint:
-        # accumulate_grad_batches = {5: max(1, 16 // bs), 10: 64 // bs}
-        accumulate_grad_batches = 1
+        accumulate_grad_batches = {5: max(1, 16 // bs), 10: 64 // bs}
+        # accumulate_grad_batches = 1
     else:
         accumulate_grad_batches = 1
     print(hparams)
@@ -50,30 +49,19 @@ def main(hparams):
         profiler=True,
         accumulate_grad_batches=accumulate_grad_batches,
         deterministic=True,
+        weights_summary="full",
         # track_grad_norm=2,
         # fast_dev_run=True,
         # overfit_pct=0.05,
     )
-
-    if hparams.resume_from_checkpoint:
-        net = Net.load_from_checkpoint(hparams.resume_from_checkpoint)
-    else:
-        net = Net(hparams)
-
+    net = Net(hparams)
     trainer.fit(net)
 
-    # TODO Load the best model here
-
-    if hparams.use_cgan:
-        cgan = CGAN(hparams, net)
-        trainer.max_epochs = hparams.net_epochs + hparams.cgan_epochs
-        trainer.fit(cgan)
-
     if hparams.run_tests:
-        trainer.test()
+        trainer.test(ckpt_path="best")
 
 
-if __name__ == "__main__":
+def parse_arguments():
     parser = ArgumentParser(description="Binding Site Predictor", add_help=True)
 
     # Trainer Args
@@ -82,7 +70,7 @@ if __name__ == "__main__":
         "--seed", default=42, type=int, help="Training seed. Default: %(default)d"
     )
     trainer_group.add_argument(
-        "--gpus", default=-1, type=int, help="Default: %(default)d"
+        "--gpus", default=1, type=int, help="Default: %(default)d"
     )
     trainer_group.add_argument(
         "--batch-size",
@@ -92,9 +80,22 @@ if __name__ == "__main__":
         help="Default: %(default)d",
     )
     trainer_group.add_argument(
+        "--weights-save-path",
+        metavar="DIR",
+        default="~/logs",
+        type=str,
+        help="Default directory to store the logs and weights. Defalut: %(default)s",
+    )
+    trainer_group.add_argument(
+        "--exp-name",
+        default="experiment_0",
+        type=str,
+        help="Name of the experiment. Each experiment can have multiple versions inside it. Default: %(default)ss",
+    )
+    trainer_group.add_argument(
         "--net-epochs",
         metavar="EPOCHS",
-        default=128,
+        default=100,
         type=int,
         help="Main Net epochs. Default: %(default)d",
     )
@@ -111,7 +112,7 @@ if __name__ == "__main__":
         help="Run tests on model. Default: %(default)s",
     )
     trainer_group.add_argument("--no-test", dest="run_tests", action="store_false")
-    trainer_group.set_defaults(run_tests=False)
+    trainer_group.set_defaults(run_tests=True)
     trainer_group.add_argument(
         "--cgan",
         dest="use_cgan",
@@ -140,15 +141,14 @@ if __name__ == "__main__":
     resnet_group = parser.add_argument_group("ResNet")
     resnet_group = ResNet.add_class_specific_args(resnet_group)
 
-    # BiLSTM Args
-    # bilstm_group = parser.add_argument_group("BiLSTM")
-    # bilstm_group = BiLSTM.add_class_specific_args(bilstm_group)
-
-    # CGAN Arguments
-    cgan_group = parser.add_argument_group("CGAN")
-    cgan_group = CGAN.add_class_specific_args(cgan_group)
-
     # Parse as hyperparameters
     hparams = parser.parse_args()
-    hparams.data_dir = os.path.abspath(hparams.data_dir)
-    main(hparams)
+    hparams.weights_save_path = os.path.abspath(
+        os.path.expanduser(hparams.weights_save_path)
+    )
+    hparams.data_dir = os.path.abspath(os.path.expanduser(hparams.data_dir))
+    return hparams
+
+
+if __name__ == "__main__":
+    main(parse_arguments())

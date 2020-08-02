@@ -1,5 +1,4 @@
 import torch
-from torch.nn.utils.rnn import pack_padded_sequence, pad_packed_sequence
 
 
 class BasicBlock(torch.nn.Module):
@@ -172,21 +171,21 @@ class ResNet(torch.nn.Module):
             "--layers",
             nargs="+",
             type=int,
-            default=[2, 2, 2, 2],
+            default=[2, 2, 2, 2, 2],
             help="The number of basic blocks to be used in each layer. Default: %(default)s",
         )
         parser.add_argument(
             "--hidden-sizes",
             nargs="+",
             type=int,
-            default=[256, 128, 64, 32],
+            default=[128, 256, 128, 64, 32],
             help="The size of the 1-D convolutional layers. Default: %(default)s",
         )
         parser.add_argument(
             "--kernel-sizes",
             nargs="+",
             type=int,
-            default=[7, 7],
+            default=[5, 5],
             help="Kernel sizes of the 2 convolutional layers of the basic block. Default: %(default)s",
         )
         return parser
@@ -248,67 +247,5 @@ class Detector(torch.nn.Module):
             type=int,
             default=[8],
             help="The number of units in each layer of the detector. Default: %(default)s",
-        )
-        return parser
-
-
-class BiLSTM(torch.nn.Module):
-    def __init__(self, input_size, hparams):
-        super().__init__()
-        self.input_size = input_size
-        self.hidden_sizes = hparams.hidden_sizes
-        self.depth = len(self.hidden_sizes)
-        self.brnn = torch.nn.ModuleList([])
-        for i in range(self.depth):
-            self.brnn.append(
-                torch.nn.LSTM(
-                    input_size=input_size,
-                    hidden_size=self.hidden_sizes[i],
-                    num_layers=hparams.num_layers,
-                    bias=True,
-                    # dropout=hparams.dropout,
-                    bidirectional=True,
-                )
-            )
-            input_size = self.hidden_sizes[i]
-
-    def forward(self, X, lengths, **kwargs):
-        # [Batch, input_size, Max_length] -> [Max_length, Batch, input_size]
-        output = X.transpose(1, 2).transpose(0, 1)
-
-        # [Max_length, Batch, input_size] -> [Max_length, Batch, hidden_sizes[-1]]
-        batch_size = len(lengths)
-        for i in range(self.depth):
-            # pack_padded_sequence so that padded items in the sequence won't be shown to the LSTM
-            output = pack_padded_sequence(output, lengths)
-            # If we don't send hidden and cell state to LSTM, they default to zero
-            # [Max_length, Batch, hidden_sizes[i-1]] -> [Max_length, Batch, 2 * hidden_sizes[i]]
-            # If i is 0 then hidden_sizes[i-1] is self.input_size
-            output, _ = self.brnn[i](output)
-            # undo the packing operation
-            output, _ = pad_packed_sequence(output)
-            # We need to change our last output dimension. We'll use averaging
-            # [Max_length, Batch, 2 * hidden_sizes[i]] -> [Max_length, Batch, hidden_sizes[i]]
-            output = output.view(lengths[0], batch_size, 2, self.hidden_sizes[i])
-            output = output.mean(dim=2)
-            self.dropout(output)
-
-        # [Max_length, Batch, hidden_sizes[-1]] -> [Batch, hidden_size[-1], Max_length]
-        return output.transpose(0, 1).transpose(1, 2)
-
-    @staticmethod
-    def add_class_specific_args(parser):
-        parser.add_argument(
-            "--hidden-sizes",
-            nargs="+",
-            type=int,
-            default=[256, 128, 64, 32],
-            help="The size of each stacked LSTM layers. Default: %(default)s",
-        )
-        parser.add_argument(
-            "--num-layers",
-            type=int,
-            default=1,
-            help="Number of LSTM units in each layer. Default: %(default)s",
         )
         return parser

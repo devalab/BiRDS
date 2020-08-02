@@ -126,7 +126,10 @@ class scPDB(Dataset):
             tmp = glob(os.path.join(self.msa_dir, "*", name + "_?.npy"))
         if tmp == []:
             tmp = glob(os.path.join(self.raw_dir, "*", name + "_?.npy"))
-        for file in tqdm(sorted(tmp)):
+        tmp = sorted(tmp)
+        if self.hparams.progress_bar_refresh_rate != 0:
+            tmp = tqdm(tmp)
+        for file in tmp:
             pis, chain = file.split("/")[-2:]
             chain = chain[-5:-4]
             mapping[pis + "/" + chain] = np.load(file).astype(np.float32)
@@ -307,7 +310,7 @@ class scPDB(Dataset):
             help="Use Position Specific Scoring Matrix in input features for the model. Default: %(default)s",
         )
         parser.add_argument("--no-pssm", dest="use_pssm", action="store_false")
-        parser.set_defaults(use_pssm=False)
+        parser.set_defaults(use_pssm=True)
 
         parser.add_argument(
             "--ss2",
@@ -316,7 +319,7 @@ class scPDB(Dataset):
             help="Use secondary structure predicted using PSIPRED. Default: %(default)s",
         )
         parser.add_argument("--no-ss2", dest="use_ss2", action="store_false")
-        parser.set_defaults(use_ss2=False)
+        parser.set_defaults(use_ss2=True)
 
         parser.add_argument(
             "--solv",
@@ -325,7 +328,7 @@ class scPDB(Dataset):
             help="Use solvent accessibilities predicted using SOLVPRED. Default: %(default)s",
         )
         parser.add_argument("--no-solv", dest="use_solv", action="store_false")
-        parser.set_defaults(use_solv=False)
+        parser.set_defaults(use_solv=True)
 
         parser.add_argument(
             "--ss3",

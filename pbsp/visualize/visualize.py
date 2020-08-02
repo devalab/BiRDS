@@ -42,7 +42,7 @@ def get_pred_metrics(dataset):
 
 
 parser = ArgumentParser(description="Binding Site Predictor", add_help=True)
-parser.add_argument("cpkt", type=str, help="Checkpoint file for loading model")
+parser.add_argument("ckpt", type=str, help="Checkpoint file for loading model")
 parser.add_argument(
     "--data-dir",
     default="../../data",
@@ -57,7 +57,7 @@ if not args.debug:
     from pbsp.metrics import batch_metrics
     from pbsp.net import Net
 
-    net = Net.load_from_checkpoint(args.cpkt).cuda()
+    net = Net.load_from_checkpoint(args.ckpt).cuda()
     device = net.device
     print(device)
     net.freeze()
