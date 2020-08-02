@@ -310,7 +310,7 @@ class scPDB(Dataset):
             help="Use Position Specific Scoring Matrix in input features for the model. Default: %(default)s",
         )
         parser.add_argument("--no-pssm", dest="use_pssm", action="store_false")
-        parser.set_defaults(use_pssm=False)
+        parser.set_defaults(use_pssm=True)
 
         parser.add_argument(
             "--ss2",
@@ -319,7 +319,7 @@ class scPDB(Dataset):
             help="Use secondary structure predicted using PSIPRED. Default: %(default)s",
         )
         parser.add_argument("--no-ss2", dest="use_ss2", action="store_false")
-        parser.set_defaults(use_ss2=False)
+        parser.set_defaults(use_ss2=True)
 
         parser.add_argument(
             "--solv",
@@ -328,7 +328,7 @@ class scPDB(Dataset):
             help="Use solvent accessibilities predicted using SOLVPRED. Default: %(default)s",
         )
         parser.add_argument("--no-solv", dest="use_solv", action="store_false")
-        parser.set_defaults(use_solv=False)
+        parser.set_defaults(use_solv=True)
 
         parser.add_argument(
             "--ss3",
