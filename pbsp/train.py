@@ -4,7 +4,7 @@ from argparse import ArgumentParser, Namespace
 import pytorch_lightning as pl
 
 from pbsp.datasets import scPDB
-from pbsp.models import BiLSTM, ResNet  # noqa: F401
+from pbsp.models import ResNet
 from pbsp.net import Net
 
 
@@ -53,7 +53,6 @@ def main(hparams):
         # overfit_pct=0.05,
     )
     net = Net(hparams)
-
     trainer.fit(net)
 
     if hparams.run_tests:
@@ -92,7 +91,7 @@ def parse_arguments():
         help="Name of the experiment. Each experiment can have multiple versions inside it. Default: %(default)ss",
     )
     trainer_group.add_argument(
-        "--max-epochs",
+        "--net-epochs",
         metavar="EPOCHS",
         default=100,
         type=int,
@@ -113,6 +112,14 @@ def parse_arguments():
     trainer_group.add_argument("--no-test", dest="run_tests", action="store_false")
     trainer_group.set_defaults(run_tests=True)
     trainer_group.add_argument(
+        "--cgan",
+        dest="use_cgan",
+        action="store_true",
+        help="Train a Complementary GAN after main net training. Default: %(default)s",
+    )
+    trainer_group.add_argument("--no-cgan", dest="use_cgan", action="store_false")
+    trainer_group.set_defaults(use_cgan=False)
+    trainer_group.add_argument(
         "--resume-from-checkpoint",
         metavar="PATH",
         default=None,
@@ -131,10 +138,6 @@ def parse_arguments():
     # ResNet Args
     resnet_group = parser.add_argument_group("ResNet")
     resnet_group = ResNet.add_class_specific_args(resnet_group)
-
-    # BiLSTM Args
-    # bilstm_group = parser.add_argument_group("BiLSTM")
-    # bilstm_group = BiLSTM.add_class_specific_args(bilstm_group)
 
     # Parse as hyperparameters
     hparams = parser.parse_args()

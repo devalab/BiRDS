@@ -84,24 +84,11 @@ def tune_net(config, scheduler, hparams):
 if __name__ == "__main__":
     hparams = parse_arguments()
     config = {
-        # "kernel_sizes": tune.choice([[3, 3], [5, 5], [7, 7]]),
-        # "layers": tune.choice(
-        #     [[2, 2, 2, 2, 2], [2, 3, 4, 3, 2], [1, 2, 2, 2, 1], [2, 4, 8, 4, 2]]
-        # ),
-        "nla_type": tune.grid_search(
-            [
-                "ELU",
-                "LeakyReLU",
-                "PReLU",
-                "ReLU",
-                "ReLU6",
-                "RReLU",
-                "SELU",
-                "CELU",
-                "GELU",
-            ]
+        "kernel_sizes": tune.choice([[3, 3], [5, 5], [7, 7]]),
+        "layers": tune.choice(
+            [[2, 2, 2, 2, 2], [2, 3, 4, 3, 2], [1, 2, 2, 2, 1], [2, 4, 8, 4, 2]]
         ),
-        # "hidden_sizes": tune.choice([[128, 64, 32, 16], [128, 256, 128, 64]]),
+        "hidden_sizes": tune.choice([[128, 64, 32, 16], [128, 256, 128, 64]]),
         # "net_lr": tune.loguniform(1e-4, 1e-1),
         # "net_lr": 0.01,
     }
@@ -112,12 +99,12 @@ if __name__ == "__main__":
     #     perturbation_interval=8,
     #     hyperparam_mutations={"lr": lambda: tune.loguniform(1e-4, 1e-1).func(None)},
     # )
-    # scheduler = ASHAScheduler(
-    #     metric="v_mcc",
-    #     mode="max",
-    #     max_t=hparams.max_epochs,
-    #     grace_period=10,
-    #     reduction_factor=2,
-    # )
-    scheduler = FIFOScheduler()
+    scheduler = ASHAScheduler(
+        metric="v_mcc",
+        mode="max",
+        max_t=hparams.max_epochs,
+        grace_period=10,
+        reduction_factor=2,
+    )
+    # scheduler = FIFOScheduler()
     tune_net(config, scheduler, hparams)

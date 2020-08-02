@@ -1,3 +1,4 @@
+from argparse import Namespace
 from collections import OrderedDict
 
 import pytorch_lightning as pl
@@ -11,12 +12,10 @@ from pbsp.metrics import (
     batch_loss,
     batch_metrics,
     make_figure,
-    pl_weighted_loss,
     weighted_bce_loss,
     weighted_focal_loss,
 )
-from pbsp.models import BiLSTM, Detector, ResNet
-from argparse import Namespace
+from pbsp.models import Detector, ResNet
 
 SMOOTH = 1e-6
 
@@ -37,10 +36,7 @@ class Net(pl.LightningModule):
         if hparams.run_tests:
             self.test_ds = scPDB(hparams, test=True)
 
-        if hparams.embedding_model == "bilstm":
-            self.model_class = BiLSTM
-        else:
-            self.model_class = ResNet
+        self.model_class = ResNet
         self.embedding_model = self.model_class(self.train_ds.input_size, hparams)
         dummy = torch.ones((1, self.train_ds.input_size, 10))
         self.embedding_dim = self.embedding_model(dummy, dummy.shape[2]).shape[1]
@@ -48,8 +44,6 @@ class Net(pl.LightningModule):
         self.detector = Detector(self.embedding_dim, hparams)
         if hparams.loss == "focal":
             self.loss_func = weighted_focal_loss
-        elif hparams.loss == "pl":
-            self.loss_func = pl_weighted_loss
         else:
             self.loss_func = weighted_bce_loss
 
@@ -205,7 +199,7 @@ class Net(pl.LightningModule):
             "--embedding-model",
             default="resnet",
             type=str,
-            choices=["resnet", "bilstm"],
+            choices=["resnet"],
             help="Model to be used for generating embeddings. Default: %(default)s",
         )
         parser.add_argument(
