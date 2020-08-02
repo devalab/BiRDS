@@ -4,22 +4,21 @@ from argparse import ArgumentParser, Namespace
 import pytorch_lightning as pl
 
 from pbsp.datasets import scPDB
-from pbsp.models import ResNet  # noqa: F401
+from pbsp.models import ResNet
 from pbsp.net import Net
 
 
 class MyModelCheckpoint(pl.callbacks.ModelCheckpoint):
     def format_checkpoint_name(self, epoch, metrics, ver=None):
         if self.filename == "{epoch}":
-            self.filename = "{epoch}-{v_mcc:.3f}-{v_acc:.3f}-{v_f1:.3f}"
+            self.filename = "{epoch}-{v_mcc:.3f}-{v_acc:.3f}-{v_loss:.3f}"
         return super().format_checkpoint_name(epoch, metrics, ver)
 
 
 def main(hparams):
     pl.seed_everything(hparams.seed)
-    # Logging to HOME so that all experiments are available for viewing on Cluster
     logger = pl.loggers.TestTubeLogger(
-        save_dir=hparams.weights_save_path, name=hparams.exp_name, create_git_tag=True
+        save_dir=hparams.weights_save_path, name=hparams.exp_name, create_git_tag=True,
     )
     checkpoint_callback = MyModelCheckpoint(
         monitor="v_mcc", verbose=True, save_top_k=3, mode="max",
@@ -28,7 +27,6 @@ def main(hparams):
     if hparams.progress_bar_refresh_rate is None:
         hparams.progress_bar_refresh_rate = 64 // bs
     const_params = {
-        "max_epochs": hparams.net_epochs,
         "row_log_interval": 64 // bs,
         "log_save_interval": 256 // bs,
         "gradient_clip_val": 0,

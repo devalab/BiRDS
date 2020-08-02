@@ -463,7 +463,6 @@ def main(hparams):
     if hparams.progress_bar_refresh_rate is None:
         hparams.progress_bar_refresh_rate = 64 // bs
     const_params = {
-        "max_epochs": hparams.net_epochs,
         "row_log_interval": 64 // bs,
         "log_save_interval": 256 // bs,
         "gradient_clip_val": 0,
@@ -516,7 +515,7 @@ if __name__ == "__main__":
         help="Default: %(default)d",
     )
     trainer_group.add_argument(
-        "--net-epochs",
+        "--max-epochs",
         metavar="EPOCHS",
         default=50,
         type=int,

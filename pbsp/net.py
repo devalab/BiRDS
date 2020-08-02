@@ -25,6 +25,7 @@ class Net(pl.LightningModule):
         super().__init__()
         if type(hparams) is dict:
             hparams = Namespace(**hparams)
+        # torch.autograd.set_detect_anomaly(True)
         self.hparams = hparams
         self.num_cpus = 10
         if hparams.gpus != 0:
