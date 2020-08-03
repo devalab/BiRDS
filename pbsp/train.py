@@ -11,14 +11,14 @@ from pbsp.net import Net
 class MyModelCheckpoint(pl.callbacks.ModelCheckpoint):
     def format_checkpoint_name(self, epoch, metrics, ver=None):
         if self.filename == "{epoch}":
-            self.filename = "{epoch}-{v_mcc:.3f}-{v_acc:.3f}-{v_loss:.3f}"
+            self.filename = "{epoch}-{v_mcc:.3f}-{v_acc:.3f}-{v_f1:.3f}"
         return super().format_checkpoint_name(epoch, metrics, ver)
 
 
 def main(hparams):
     pl.seed_everything(hparams.seed)
     logger = pl.loggers.TestTubeLogger(
-        save_dir=hparams.weights_save_path, name=hparams.exp_name, create_git_tag=True,
+        save_dir=hparams.weights_save_path, name=hparams.exp_name, create_git_tag=True
     )
     checkpoint_callback = MyModelCheckpoint(
         monitor="v_mcc", verbose=True, save_top_k=3, mode="max",

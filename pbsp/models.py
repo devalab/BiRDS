@@ -6,7 +6,6 @@ class BasicBlock(torch.nn.Module):
         self,
         in_channels,
         out_channels,
-        nla_type,
         kernel_size=[3, 3],
         norm_layer=None,
         downsample=None,
@@ -26,7 +25,7 @@ class BasicBlock(torch.nn.Module):
             bias=False,
         )
         self.bn1 = norm_layer(out_channels)
-        self.nla1 = nla_type()
+        self.relu = torch.nn.ReLU()
         self.conv2 = torch.nn.Conv1d(
             in_channels=out_channels,
             out_channels=out_channels,
@@ -36,12 +35,11 @@ class BasicBlock(torch.nn.Module):
         )
         self.bn2 = norm_layer(out_channels)
         self.downsample = downsample
-        self.nla2 = nla_type()
 
     def forward(self, x, **kwargs):
         out = self.conv1(x)
         out = self.bn1(out)
-        out = self.nla1(out)
+        out = self.relu(out)
 
         out = self.conv2(out)
         out = self.bn2(out)
@@ -51,7 +49,7 @@ class BasicBlock(torch.nn.Module):
         else:
             identity = x
 
-        out = self.nla2(out)
+        out = self.relu(out)
         # Don't use += will cause inplace operation leading to error
         out = out + identity
 
@@ -60,7 +58,7 @@ class BasicBlock(torch.nn.Module):
 
 class MakeResNet(torch.nn.Module):
     def __init__(
-        self, layers, kernel_size, input_size, hidden_sizes, nla_type, norm_layer=None,
+        self, layers, kernel_size, input_size, hidden_sizes, norm_layer=None,
     ):
         super().__init__()
         if norm_layer is None:
@@ -76,13 +74,13 @@ class MakeResNet(torch.nn.Module):
             bias=False,
         )
         self.bn1 = norm_layer(self.start_planes)
-        self.nla = nla_type()
+        self.relu = torch.nn.ReLU(inplace=True)
         self.depth = len(hidden_sizes)
         # self.maxpool = torch.nn.MaxPool1d(kernel_size=3, stride=1, padding=1)
         self.layers = torch.nn.ModuleList([])
         for i in range(self.depth):
             self.layers.append(
-                self._make_layer(hidden_sizes[i], layers[i], nla_type, kernel_size)
+                self._make_layer(hidden_sizes[i], layers[i], kernel_size)
             )
 
         for m in self.modules():
@@ -94,7 +92,7 @@ class MakeResNet(torch.nn.Module):
                 torch.nn.init.constant_(m.weight, 1)
                 torch.nn.init.constant_(m.bias, 0)
 
-    def _make_layer(self, out_planes, blocks, nla_type, kernel_size):
+    def _make_layer(self, out_planes, blocks, kernel_size):
         norm_layer = self._norm_layer
         downsample = torch.nn.Sequential(
             torch.nn.Conv1d(
@@ -108,20 +106,13 @@ class MakeResNet(torch.nn.Module):
         layers = []
         layers.append(
             BasicBlock(
-                self.start_planes,
-                out_planes,
-                nla_type,
-                kernel_size,
-                norm_layer,
-                downsample,
+                self.start_planes, out_planes, kernel_size, norm_layer, downsample
             )
         )
         self.start_planes = out_planes
         for _ in range(1, blocks):
             layers.append(
-                BasicBlock(
-                    self.start_planes, out_planes, nla_type, kernel_size, norm_layer
-                )
+                BasicBlock(self.start_planes, out_planes, kernel_size, norm_layer)
             )
 
         return torch.nn.Sequential(*layers)
@@ -129,7 +120,7 @@ class MakeResNet(torch.nn.Module):
     def forward(self, x, **kwargs):
         x = self.conv1(x)
         x = self.bn1(x)
-        x = self.nla(x)
+        x = self.relu(x)
         # x = self.maxpool(x)
 
         for i in range(self.depth):
@@ -144,11 +135,7 @@ class ResNet(torch.nn.Module):
         assert len(hparams.layers) == len(hparams.hidden_sizes)
         self.input_size = input_size
         self.resnet_layer = MakeResNet(
-            hparams.layers,
-            hparams.kernel_sizes,
-            input_size,
-            hparams.hidden_sizes,
-            getattr(torch.nn, hparams.nla_type),
+            hparams.layers, hparams.kernel_sizes, input_size, hparams.hidden_sizes
         )
 
     def forward(self, X, lengths, **kwargs):
@@ -178,23 +165,6 @@ class ResNet(torch.nn.Module):
             default=[5, 5],
             help="Kernel sizes of the 2 convolutional layers of the basic block. Default: %(default)s",
         )
-        parser.add_argument(
-            "--nla-type",
-            type=str,
-            choices=[
-                "ELU",
-                "LeakyReLU",
-                "PReLU",
-                "ReLU",
-                "ReLU6",
-                "RReLU",
-                "SELU",
-                "CELU",
-                "GELU",
-            ],
-            default="ReLU",
-            help="The type of non-linear activation function to use. Default: %(default)s",
-        )
         return parser
 
 
@@ -205,7 +175,7 @@ class Detector(torch.nn.Module):
         layers = []
         for unit in hparams.detector_units:
             layers.append(torch.nn.Linear(input_size, unit))
-            layers.append(getattr(torch.nn, hparams.nla_type)())
+            layers.append(torch.nn.LeakyReLU(0.2, True))
             layers.append(torch.nn.Dropout(hparams.dropout))
             input_size = unit
         self.detector = torch.nn.Sequential(*layers, torch.nn.Linear(input_size, 1))
