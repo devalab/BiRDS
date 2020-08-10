@@ -1,0 +1,49 @@
+This is BibTeX, Version 0.99d (TeX Live 2020)
+Capacity: max_strings=200000, hash_size=200000, hash_prime=170003
+The top-level auxiliary file: bindingsite_seq.aux
+The style file: achemso.bst
+Reallocated singl_function (elt_size=4) to 100 items from 50.
+Database file #1: acs-bindingsite_seq.bib
+Database file #2: achemso-demo.bib
+achemso 2020-05-27 v3.13a
+You've used 19 entries,
+            2538 wiz_defined-function locations,
+            863 strings with 10892 characters,
+and the built_in function-call counts, 7704 in all, are:
+= -- 602
+> -- 524
+< -- 9
++ -- 204
+- -- 187
+* -- 818
+:= -- 1054
+add.period$ -- 35
+call.type$ -- 19
+change.case$ -- 4
+chr.to.int$ -- 2
+cite$ -- 19
+duplicate$ -- 420
+empty$ -- 466
+format.name$ -- 200
+if$ -- 1476
+int.to.chr$ -- 0
+int.to.str$ -- 1
+missing$ -- 0
+newline$ -- 136
+num.names$ -- 56
+pop$ -- 37
+preamble$ -- 1
+purify$ -- 0
+quote$ -- 0
+skip$ -- 19
+stack$ -- 0
+substring$ -- 418
+swap$ -- 497
+text.length$ -- 38
+text.prefix$ -- 0
+top$ -- 1
+type$ -- 130
+warning$ -- 0
+while$ -- 73
+width$ -- 0
+write$ -- 258
