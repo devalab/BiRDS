@@ -1,0 +1,28 @@
+name: pbsp
+
+channels:
+  - defaults
+  - pytorch
+  - openbabel
+  - rdkit
+  - bioconda
+
+dependencies:
+  - pytorch=1.5.0
+  - cudatoolkit=10.2
+  - torchvision=0.6.0
+  - matplotlib=3.2.1
+  - jupyter
+  - flake8
+  - biopython
+  - rdkit
+  - openbabel
+  - aria2
+  - scikit-learn=0.23.1
+  - flask
+  - pip
+  - pip:
+    - pytorch-lightning==0.8.5
+    - torch-cluster==1.5.4
+    - test-tube==0.7.5
+    - black

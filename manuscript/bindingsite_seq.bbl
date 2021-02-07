@@ -8,7 +8,7 @@
 \providecommand*\mcitethebibliography{\thebibliography}
 \csname @ifundefined\endcsname{endmcitethebibliography}
   {\let\endmcitethebibliography\endthebibliography}{}
-\begin{mcitethebibliography}{19}
+\begin{mcitethebibliography}{25}
 \providecommand*\natexlab[1]{#1}
 \providecommand*\mciteSetBstSublistMode[1]{}
 \providecommand*\mciteSetBstMaxWidthForm[2]{}
@@ -26,13 +26,71 @@
   {\relax}
   {\relax}
 
-\bibitem[Senior \latin{et~al.}(2020)Senior, Evans, Jumper, Kirkpatrick, Sifre,
-  Green, Qin, {\v{Z}}{\'\i}dek, Nelson, Bridgland, \latin{et~al.}
-  others]{senior2020improved}
-Senior,~A.~W.; Evans,~R.; Jumper,~J.; Kirkpatrick,~J.; Sifre,~L.; Green,~T.;
-  Qin,~C.; {\v{Z}}{\'\i}dek,~A.; Nelson,~A.~W.; Bridgland,~A., \latin{et~al.}
-  Improved protein structure prediction using potentials from deep learning.
-  \emph{Nature} \textbf{2020}, \emph{577}, 706--710\relax
+\bibitem[Hernandez \latin{et~al.}(2009)Hernandez, Ghersi, and
+  Sanchez]{hernandez2009sitehound}
+Hernandez,~M.; Ghersi,~D.; Sanchez,~R. SITEHOUND-web: a server for ligand
+  binding site identification in protein structures. \emph{Nucleic acids
+  research} \textbf{2009}, \emph{37}, W413--W416\relax
+\mciteBstWouldAddEndPuncttrue
+\mciteSetBstMidEndSepPunct{\mcitedefaultmidpunct}
+{\mcitedefaultendpunct}{\mcitedefaultseppunct}\relax
+\EndOfBibitem
+\bibitem[Liu \latin{et~al.}(2020)Liu, Grimm, Dai, Hou, Xiao, and
+  Cao]{liu2020cb}
+Liu,~Y.; Grimm,~M.; Dai,~W.-t.; Hou,~M.-c.; Xiao,~Z.-X.; Cao,~Y. CB-Dock: a web
+  server for cavity detection-guided protein--ligand blind docking. \emph{Acta
+  Pharmacologica Sinica} \textbf{2020}, \emph{41}, 138--144\relax
+\mciteBstWouldAddEndPuncttrue
+\mciteSetBstMidEndSepPunct{\mcitedefaultmidpunct}
+{\mcitedefaultendpunct}{\mcitedefaultseppunct}\relax
+\EndOfBibitem
+\bibitem[Yang \latin{et~al.}(2013)Yang, Roy, and Zhang]{yang2013protein}
+Yang,~J.; Roy,~A.; Zhang,~Y. Protein--ligand binding site recognition using
+  complementary binding-specific substructure comparison and sequence profile
+  alignment. \emph{Bioinformatics} \textbf{2013}, \emph{29}, 2588--2595\relax
+\mciteBstWouldAddEndPuncttrue
+\mciteSetBstMidEndSepPunct{\mcitedefaultmidpunct}
+{\mcitedefaultendpunct}{\mcitedefaultseppunct}\relax
+\EndOfBibitem
+\bibitem[Yang \latin{et~al.}(2012)Yang, Roy, and Zhang]{yang2012biolip}
+Yang,~J.; Roy,~A.; Zhang,~Y. BioLiP: a semi-manually curated database for
+  biologically relevant ligand--protein interactions. \emph{Nucleic acids
+  research} \textbf{2012}, \emph{41}, D1096--D1103\relax
+\mciteBstWouldAddEndPuncttrue
+\mciteSetBstMidEndSepPunct{\mcitedefaultmidpunct}
+{\mcitedefaultendpunct}{\mcitedefaultseppunct}\relax
+\EndOfBibitem
+\bibitem[Kriv{\'a}k and Hoksza(2018)Kriv{\'a}k, and Hoksza]{krivak2018p2rank}
+Kriv{\'a}k,~R.; Hoksza,~D. P2Rank: machine learning based tool for rapid and
+  accurate prediction of ligand binding sites from protein structure.
+  \emph{Journal of cheminformatics} \textbf{2018}, \emph{10}, 39\relax
+\mciteBstWouldAddEndPuncttrue
+\mciteSetBstMidEndSepPunct{\mcitedefaultmidpunct}
+{\mcitedefaultendpunct}{\mcitedefaultseppunct}\relax
+\EndOfBibitem
+\bibitem[Jim{\'e}nez \latin{et~al.}(2017)Jim{\'e}nez, Doerr,
+  Mart{\'\i}nez-Rosell, Rose, and De~Fabritiis]{jimenez2017deepsite}
+Jim{\'e}nez,~J.; Doerr,~S.; Mart{\'\i}nez-Rosell,~G.; Rose,~A.~S.;
+  De~Fabritiis,~G. DeepSite: protein-binding site predictor using
+  3D-convolutional neural networks. \emph{Bioinformatics} \textbf{2017},
+  \emph{33}, 3036--3042\relax
+\mciteBstWouldAddEndPuncttrue
+\mciteSetBstMidEndSepPunct{\mcitedefaultmidpunct}
+{\mcitedefaultendpunct}{\mcitedefaultseppunct}\relax
+\EndOfBibitem
+\bibitem[Stepniewska-Dziubinska \latin{et~al.}(2020)Stepniewska-Dziubinska,
+  Zielenkiewicz, and Siedlecki]{stepniewska2020improving}
+Stepniewska-Dziubinska,~M.~M.; Zielenkiewicz,~P.; Siedlecki,~P. Improving
+  detection of protein-ligand binding sites with 3D segmentation.
+  \emph{Scientific reports} \textbf{2020}, \emph{10}, 1--9\relax
+\mciteBstWouldAddEndPuncttrue
+\mciteSetBstMidEndSepPunct{\mcitedefaultmidpunct}
+{\mcitedefaultendpunct}{\mcitedefaultseppunct}\relax
+\EndOfBibitem
+\bibitem[Cui \latin{et~al.}(2019)Cui, Dong, Hong, and Wang]{cui2019predicting}
+Cui,~Y.; Dong,~Q.; Hong,~D.; Wang,~X. Predicting protein-ligand binding
+  residues with deep convolutional neural networks. \emph{BMC bioinformatics}
+  \textbf{2019}, \emph{20}, 93\relax
 \mciteBstWouldAddEndPuncttrue
 \mciteSetBstMidEndSepPunct{\mcitedefaultmidpunct}
 {\mcitedefaultendpunct}{\mcitedefaultseppunct}\relax
@@ -60,15 +118,6 @@ Burley,~S.~K.; Berman,~H.~M.; Bhikadiya,~C.; Bi,~C.; Chen,~L.; Di~Costanzo,~L.;
 \EndOfBibitem
 \bibitem[Zhang()]{NWAlign}
 Zhang,~Y. \url{http://zhanglab.ccmb.med.umich.edu/NW-align}\relax
-\mciteBstWouldAddEndPuncttrue
-\mciteSetBstMidEndSepPunct{\mcitedefaultmidpunct}
-{\mcitedefaultendpunct}{\mcitedefaultseppunct}\relax
-\EndOfBibitem
-\bibitem[Stepniewska-Dziubinska \latin{et~al.}(2020)Stepniewska-Dziubinska,
-  Zielenkiewicz, and Siedlecki]{stepniewska2020improving}
-Stepniewska-Dziubinska,~M.~M.; Zielenkiewicz,~P.; Siedlecki,~P. Improving
-  detection of protein-ligand binding sites with 3D segmentation.
-  \emph{Scientific reports} \textbf{2020}, \emph{10}, 1--9\relax
 \mciteBstWouldAddEndPuncttrue
 \mciteSetBstMidEndSepPunct{\mcitedefaultmidpunct}
 {\mcitedefaultendpunct}{\mcitedefaultseppunct}\relax

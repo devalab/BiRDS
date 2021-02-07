@@ -1,49 +1,49 @@
-This is BibTeX, Version 0.99d (TeX Live 2020)
+This is BibTeX, Version 0.99d (TeX Live 2019/Debian)
 Capacity: max_strings=200000, hash_size=200000, hash_prime=170003
 The top-level auxiliary file: bindingsite_seq.aux
 The style file: achemso.bst
 Reallocated singl_function (elt_size=4) to 100 items from 50.
 Database file #1: acs-bindingsite_seq.bib
 Database file #2: achemso-demo.bib
-achemso 2020-05-27 v3.13a
-You've used 19 entries,
+achemso 2019-02-14 v3.12a
+You've used 25 entries,
             2538 wiz_defined-function locations,
-            863 strings with 10892 characters,
-and the built_in function-call counts, 7704 in all, are:
-= -- 602
-> -- 524
-< -- 9
-+ -- 204
-- -- 187
-* -- 818
-:= -- 1054
-add.period$ -- 35
-call.type$ -- 19
+            895 strings with 11915 characters,
+and the built_in function-call counts, 9706 in all, are:
+= -- 778
+> -- 617
+< -- 10
++ -- 240
+- -- 216
+* -- 1041
+:= -- 1318
+add.period$ -- 47
+call.type$ -- 25
 change.case$ -- 4
 chr.to.int$ -- 2
-cite$ -- 19
-duplicate$ -- 420
-empty$ -- 466
-format.name$ -- 200
-if$ -- 1476
+cite$ -- 25
+duplicate$ -- 528
+empty$ -- 616
+format.name$ -- 238
+if$ -- 1870
 int.to.chr$ -- 0
 int.to.str$ -- 1
 missing$ -- 0
-newline$ -- 136
-num.names$ -- 56
-pop$ -- 37
+newline$ -- 172
+num.names$ -- 74
+pop$ -- 48
 preamble$ -- 1
 purify$ -- 0
 quote$ -- 0
-skip$ -- 19
+skip$ -- 25
 stack$ -- 0
-substring$ -- 418
-swap$ -- 497
-text.length$ -- 38
+substring$ -- 556
+swap$ -- 601
+text.length$ -- 50
 text.prefix$ -- 0
 top$ -- 1
-type$ -- 130
+type$ -- 172
 warning$ -- 0
-while$ -- 73
+while$ -- 95
 width$ -- 0
-write$ -- 258
+write$ -- 335

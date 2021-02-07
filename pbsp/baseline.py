@@ -18,7 +18,7 @@ from torch.optim.lr_scheduler import ReduceLROnPlateau
 from torch.utils.data import DataLoader, Dataset, Subset
 from tqdm import tqdm
 
-from pbsp.metrics import batch_loss, batch_metrics, weighted_bce_loss
+from pbsp.metrics import batch_loss, batch_metrics, weighted_bce_loss, make_figure
 
 SMOOTH = 1e-6
 
@@ -31,21 +31,25 @@ class scPDB(Dataset):
     def __init__(self, hparams, test=False):
         super().__init__()
         self.hparams = hparams
+        self.test = test
         if test:
             self.dataset_dir = os.path.join(hparams.data_dir, "2018_scPDB")
         else:
             self.dataset_dir = os.path.join(hparams.data_dir, "scPDB")
             self.splits_dir = os.path.join(self.dataset_dir, "splits")
             self.fold = str(hparams.fold)
+        self.raw_dir = os.path.join(self.dataset_dir, "raw")
         self.preprocessed_dir = os.path.join(self.dataset_dir, "preprocessed")
         self.msa_dir = os.path.join(self.dataset_dir, "msa")
 
         # Get features and labels that are small in size
         self.sequences, self.labels = self.get_sequences_and_labels()
-        self.pssm = self.get_npy("pssm", True)
-        self.spot_asa = self.get_npy("asa", True)
-        self.spot_ss3 = self.get_npy("ss3", True)
-        self.spot_torsion = self.get_npy("torsion", True)
+        self.pssm = self.get_npy("pssm")
+        self.torsion = self.get_npy("torsion")
+        self.asa = self.get_npy("asa")
+        self.ss3 = self.get_npy("ss3")
+        self.re = self.get_entropy("re")
+        self.jsd = self.get_entropy("jsd")
 
         self.available_data = sorted(list(self.labels.keys()))
         # ------------MAPPINGS------------
@@ -63,7 +67,11 @@ class scPDB(Dataset):
 
         # pdbID_structure/chain to available MSA pdbID_structure/chain sequence
         self.pisc_to_mpisc = {}
-        with open(os.path.join(self.dataset_dir, "no_one_msa_unique"), "r") as f:
+        if test:
+            unique = "no_one_msa_unique"
+        else:
+            unique = "unique"
+        with open(os.path.join(self.dataset_dir, unique), "r") as f:
             for line in f.readlines():
                 line = line.strip().split()
                 mpisc = line[0][:-1]
@@ -81,19 +89,29 @@ class scPDB(Dataset):
         self.pi_to_index = {pi: idx for idx, pi in enumerate(self.dataset)}
 
         if not test:
-            if hparams.compute_pos_weight:
-                # self.pos_weight = self.compute_pos_weight()
-                self.pos_weight = [6507812 / 475440]
+            if hparams.pos_weight:
+                print("Using provided positional weighting")
+                self.pos_weight = [hparams.pos_weight]
+            elif hparams.pos_weight == 0.0:
+                print("Precomputing positional weights...")
+                self.pos_weight = self.compute_pos_weight()
+            else:
+                print("Positional weights will be computed on the fly")
+                self.pos_weight = None
 
             self.train_indices = [self.pi_to_index[pi] for pi in self.train_fold]
             self.valid_indices = [self.pi_to_index[pi] for pi in self.valid_fold]
 
-        self.input_size = self[0][0]["X"].shape[0]
+        self.input_size = self[0][0]["feature"].shape[0]
 
     def get_sequences_and_labels(self):
         sequences = {}
         labels = {}
-        with open(os.path.join(self.dataset_dir, "no_one_msa_info.txt")) as f:
+        if self.test:
+            info = "no_one_msa_info.txt"
+        else:
+            info = "info.txt"
+        with open(os.path.join(self.dataset_dir, info)) as f:
             f.readline()
             line = f.readline()
             while line != "":
@@ -112,11 +130,34 @@ class scPDB(Dataset):
         tmp = glob(os.path.join(self.preprocessed_dir, "*", name + "_?.npy"))
         if tmp == []:
             tmp = glob(os.path.join(self.msa_dir, "*", name + "_?.npy"))
-        for file in tqdm(sorted(tmp)):
+        if tmp == []:
+            tmp = glob(os.path.join(self.raw_dir, "*", name + "_?.npy"))
+        tmp = sorted(tmp)
+        if self.hparams.progress_bar_refresh_rate != 0:
+            tmp = tqdm(tmp)
+        for file in tmp:
             pis, chain = file.split("/")[-2:]
             chain = chain[-5:-4]
-            mapping[pis + "/" + chain] = np.load(file)
+            mapping[pis + "/" + chain] = np.load(file).astype(np.float32)
         return mapping
+
+    def get_entropy(self, name):
+        mapping = {}
+        tmp = glob(os.path.join(self.msa_dir, "*/?." + name))
+        for file in sorted(tmp):
+            pis = file.split("/")[-2]
+            chain = file[-len(name) - 2]
+            k = pis + "/" + chain
+            with open(file) as f:
+                mapping[k] = np.array(
+                    [float(el) for el in f.readline().strip().split()]
+                ).reshape(1, -1)
+            mapping[k][mapping[k] == -1000.0] = 0.0
+        return mapping
+
+    def get_coords(self, pisc):
+        pis, c = pisc.split("/")
+        return np.load(os.path.join(self.raw_dir, pis, "ca_coords_" + c + ".npy"))
 
     def get_fold(self):
         with open(os.path.join(self.splits_dir, "train_ids_fold" + self.fold)) as f:
@@ -126,7 +167,6 @@ class scPDB(Dataset):
         return train, valid
 
     def compute_pos_weight(self):
-        print("Computing positional weights...")
         zeros = 0
         ones = 0
         for pi in tqdm(self.train_fold, leave=False):
@@ -148,36 +188,66 @@ class scPDB(Dataset):
         # Taking the first structure available
         pis = self.pi_to_pis[pi][0]
         # For all available chains
-        X = {}
-        y = {}
+        data = {}
+        meta = {}
         for i, pisc in enumerate(self.pis_to_pisc[pis]):
+            _data = {}
+            _meta = {}
+
             mpisc = self.pisc_to_mpisc[pisc]
             sequence = self.sequences[pisc]
-            inputs = []
-            # PSSM
-            inputs.append(self.pssm[mpisc][:20])
-            # RSA = ASA / MaxASA
-            tmp = self.spot_asa[mpisc]
-            inputs.append(tmp / tmp.max())
-            # Secondary Structure
-            inputs.append(self.spot_ss3[mpisc] / 100.0)
-            # Phi, Psi angles
-            inputs.append(self.spot_torsion[mpisc][:2] / 360.0)
-            # Residue Type
-            inputs.append(np.array([[AA_DICT[aa] for aa in sequence]]) / 20)
-            # Positional Embedding
-            inputs.append(
-                np.arange(1, len(sequence) + 1).reshape((1, -1)) / len(sequence)
-            )
-            feature = np.vstack(inputs).astype(np.float32)
-            label = self.labels[pisc].astype(np.float32)
-            if i == 0:
-                X["X"] = feature
-                y["y"] = label
+            _meta["pisc"] = [pisc]
+            _meta["mpisc"] = [mpisc]
+            _meta["sequence"] = [sequence]
+
+            rt = np.array([AA_DICT[aa] / 20 for aa in sequence]).reshape(1, -1)
+            pe = np.arange(1, len(sequence) + 1).reshape((1, -1)) / len(sequence)
+            if mpisc not in self.torsion:
+                torsion = np.zeros((2, len(sequence)))
             else:
-                X["X"] = np.hstack((X["X"], feature))
-                y["y"] = np.hstack((y["y"], label))
-        return X, y
+                torsion = self.torsion[mpisc][:2] / 360.0
+            if mpisc not in self.asa:
+                asa = np.zeros((1, len(sequence)))
+            else:
+                asa = self.asa[mpisc] / self.asa[mpisc].max()
+            if mpisc not in self.ss3:
+                ss3 = np.zeros((3, len(sequence)))
+            else:
+                ss3 = self.ss3[mpisc] / 100.0
+            if mpisc not in self.re:
+                re = np.zeros((1, len(sequence)))
+            else:
+                re = self.re[mpisc]
+            if mpisc not in self.jsd:
+                jsd = np.zeros((1, len(sequence)))
+            else:
+                jsd = self.jsd[mpisc]
+
+            inputs = [
+                self.pssm[mpisc][:20],
+                torsion,
+                asa,
+                ss3,
+                re,
+                jsd,
+                rt,
+                pe,
+            ]
+
+            _data["feature"] = np.vstack(inputs).astype(np.float32)
+            _data["label"] = self.labels[pisc].astype(np.float32)
+            if self.test or index in self.valid_indices:
+                _data["coords"] = self.get_coords(pisc).astype(np.float32)
+
+            if i == 0:
+                data = _data
+                meta = _meta
+            else:
+                for key in _data:
+                    data[key] = np.hstack((data[key], _data[key]))
+                for key in _meta:
+                    meta[key] += _meta[key]
+        return data, meta
 
     def __len__(self):
         return len(self.dataset)
@@ -185,35 +255,41 @@ class scPDB(Dataset):
     @staticmethod
     # A collate function to merge samples into a minibatch, will be used by DataLoader
     def collate_fn(samples):
-        # samples is a list of (X, y) of size MINIBATCH_SIZE
+        # samples is a list of tuples: len(samples) = Batch Size
+        # Each tuple is of the form (data, meta)
         # Sort the samples in decreasing order of their length
-        # x[1] will be y of each sample
-        samples.sort(key=lambda x: len(x[1]["y"]), reverse=True)
-        batch_size = len(samples)
+        samples.sort(key=lambda sample: len(sample[0]["label"]), reverse=True)
+        bs = len(samples)
 
-        lengths = [0] * batch_size
-        for i, (tX, ty) in enumerate(samples):
-            lengths[i] = len(ty["y"])
+        meta = {}
+        meta["length"] = [0] * bs
+        for i, (d, m) in enumerate(samples):
+            meta["length"][i] = len(d["label"])
+            if i == 0:
+                for key in m:
+                    meta[key] = []
+            for key, val in m.items():
+                meta[key] += [val]
 
-        X = {}
-        fX = samples[0][0]
-        for key in fX.keys():
-            X[key] = np.zeros((batch_size, *fX[key].shape), dtype=fX[key].dtype)
-            for i, (tX, ty) in enumerate(samples):
-                X[key][i, ..., : lengths[i]] = tX[key]
-            X[key] = torch.from_numpy(X[key])
-
-        y = {}
-        fy = samples[0][1]
-        for key in fy.keys():
-            y[key] = np.zeros((batch_size, *fy[key].shape), dtype=fy[key].dtype)
-            for i, (tX, ty) in enumerate(samples):
-                y[key][i, ..., : lengths[i]] = ty[key]
-            y[key] = torch.from_numpy(y[key])
-        return X, y, lengths
+        data = {}
+        fdata = samples[0][0]
+        for key in fdata.keys():
+            data[key] = np.zeros((bs, *fdata[key].shape), dtype=fdata[key].dtype)
+            for i, (d, _) in enumerate(samples):
+                data[key][i, ..., : meta["length"][i]] = d[key][
+                    ..., : meta["length"][i]
+                ]
+            data[key] = torch.from_numpy(data[key])
+        return data, meta
 
     @staticmethod
     def add_class_specific_args(parser):
+        parser.add_argument(
+            "--data-dir",
+            default="../data/",
+            type=str,
+            help="Location of data directory. Default: %(default)s",
+        )
         parser.add_argument(
             "--fold",
             metavar="NUMBER",
@@ -223,13 +299,10 @@ class scPDB(Dataset):
         )
         parser.add_argument(
             "--pos-weight",
-            dest="compute_pos_weight",
             action="store_true",
             help="Compute the positional weight of the binding residue class. Default: %(default)s",
         )
-        parser.add_argument(
-            "--no-pos-weight", dest="compute_pos_weight", action="store_false",
-        )
+        parser.add_argument("--no-pos-weight", action="store_false")
         parser.set_defaults(compute_pos_weight=True)
         return parser
 
@@ -279,7 +352,7 @@ class Net(pl.LightningModule):
             self.test_ds = scPDB(hparams, test=True)
         self.stage_depth = 2  # the number of BasicBlocks in a Stage (N)
         self.kernel_width = 5  # Height (k)
-        self.amino_dim = 28
+        self.amino_dim = 30
         self.std_in_channel = 256  # (c)
         self.std_out_channel = self.std_in_channel * 2
         self.std_filter_shape = [
@@ -314,11 +387,11 @@ class Net(pl.LightningModule):
         # self.loss_func = bce_loss
         self.loss_func = weighted_bce_loss
 
-    def forward(self, features, lengths):
+    def forward(self, X, lengths):
         batch_size = len(lengths)
 
         # Norm
-        x = torch.reshape(features["X"], [batch_size, 1, -1, self.amino_dim])
+        x = torch.reshape(X, [batch_size, 1, -1, self.amino_dim])
 
         # Trans
         conv0_input = F.pad(x, (0, 0, 1, 1))
@@ -378,50 +451,71 @@ class Net(pl.LightningModule):
         }
         return [optimizer], [scheduler]
 
-    def optimizer_step(self, curr_epoch, batch_nb, optim, optim_idx, soc=None):
-        # if self.trainer.global_step < (20000 // self.hparams.batch_size):
-        #     for pg in optim.param_groups:
-        #         pg["lr"] = 0.00001 * (
-        #             0.95
-        #             ** (self.trainer.global_step // (5000 // self.hparams.batch_size))
-        #         )
+    def optimizer_step(self, curr_epoch, batch_nb, optim, optim_idx, *args, **kwargs):
+        if self.trainer.global_step < (20000 // self.hparams.batch_size):
+            for pg in optim.param_groups:
+                pg["lr"] = 0.00001 * (
+                    0.95
+                    ** (self.trainer.global_step // (5000 // self.hparams.batch_size))
+                )
 
-        # if self.trainer.global_step >= (
-        #     20000 // self.hparams.batch_size
-        # ) and self.trainer.global_step < (100000 // self.hparams.batch_size):
-        #     for pg in optim.param_groups:
-        #         pg["lr"] = 0.0001 * (
-        #             0.96
-        #             ** (self.trainer.global_step // (1000 // self.hparams.batch_size))
-        #         )
+        if self.trainer.global_step >= (
+            20000 // self.hparams.batch_size
+        ) and self.trainer.global_step < (100000 // self.hparams.batch_size):
+            for pg in optim.param_groups:
+                pg["lr"] = 0.0001 * (
+                    0.96
+                    ** (self.trainer.global_step // (1000 // self.hparams.batch_size))
+                )
 
-        # if self.trainer.global_step >= (100000 // self.hparams.batch_size):
-        #     for pg in optim.param_groups:
-        #         pg["lr"] = 0.0002 * (
-        #             0.98
-        #             ** (self.trainer.global_step // (2000 // self.hparams.batch_size))
-        #         )
+        if self.trainer.global_step >= (100000 // self.hparams.batch_size):
+            for pg in optim.param_groups:
+                pg["lr"] = 0.0002 * (
+                    0.98
+                    ** (self.trainer.global_step // (2000 // self.hparams.batch_size))
+                )
 
         optim.step()
         optim.zero_grad()
 
     def training_step(self, batch, batch_idx):
-        features, labels, lengths = batch
-        y_pred = self(features, lengths)
-        kwargs = {"pos_weight": self.train_ds.pos_weight}
-        loss = batch_loss(y_pred, labels["y"], lengths, self.loss_func, **kwargs)
+        data, meta = batch
+        y_pred = self(data["feature"], meta["length"])
+        loss = batch_loss(
+            y_pred,
+            data["label"],
+            meta["length"],
+            self.loss_func,
+            pos_weight=self.train_ds.pos_weight,
+        )
         return {"loss": loss, "log": {"loss": loss}}
 
     def val_test_step(self, batch, batch_idx, prefix):
-        features, labels, lengths = batch
-        y_pred = self(features, lengths)
+        data, meta = batch
+        y_pred = self(data["feature"], meta["length"])
         metrics = OrderedDict(
-            {prefix + "loss": batch_loss(y_pred, labels["y"], lengths, self.loss_func)}
+            {
+                prefix
+                + "loss": batch_loss(
+                    y_pred,
+                    data["label"],
+                    meta["length"],
+                    self.loss_func,
+                    pos_weight=[1.0],
+                )
+            }
         )
         for key, val in batch_metrics(
-            y_pred, labels["y"], lengths, is_logits=True
+            y_pred,
+            data,
+            meta,
+            # logger=self.logger,
+            # epoch=self.current_epoch,
         ).items():
-            metrics[prefix + key] = val
+            if key.startswith("f_"):
+                metrics["f_" + prefix + key[2:]] = val
+            else:
+                metrics[prefix + key] = val
         return metrics
 
     def validation_step(self, batch, batch_idx):
@@ -429,8 +523,23 @@ class Net(pl.LightningModule):
 
     def validation_epoch_end(self, outputs):
         avg_metrics = OrderedDict(
-            {key: torch.stack([el[key] for el in outputs]).mean() for key in outputs[0]}
+            {
+                key: torch.stack([el[key] for el in outputs]).mean()
+                for key in outputs[0]
+                if not key.startswith("f_")
+            }
         )
+        figure_metrics = OrderedDict(
+            {
+                key[2:]: torch.stack(sum([el[key] for el in outputs], [])).cpu().numpy()
+                for key in outputs[0]
+                if key.startswith("f_")
+            }
+        )
+        for key, val in figure_metrics.items():
+            self.logger.experiment.add_figure(
+                key, make_figure(key[2:], val), self.current_epoch
+            )
         return {**avg_metrics, "progress_bar": avg_metrics, "log": avg_metrics}
 
     def test_step(self, batch, batch_idx):
