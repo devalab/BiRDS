@@ -25,8 +25,8 @@
 \affiliation[IIIT-H]
 {Center for Computational Natural Sciences \& Bioinformatics, IIIT-H, Hyderabad}
 
-\title[Predicting the binding-site of a protein for druggable ligands from sequence-based features using Deep Learning]
-  {Predicting the binding-site of a protein for druggable ligands from sequence-based features using Deep Learning
+\title[ProSBiRD - Protein Sequence-based Binding Residue Detection using Deep Resnets]
+  {ProSBiRD - Protein Sequence-based Binding Residue Detection using Deep Resnets
 %   \footnote{A footnote for the title}
   }
 
@@ -83,6 +83,7 @@ Ligand binding site prediction methods can be clustered into four groups: 3D str
 
 3D structure-based methods are based on the concept that most small ligand bindings occur in hollows or cavities on protein surfaces because large interfaces have high affinity. Hence, these methods locate the binding site by searching for spatial geometry or energy features (by placing probes) in protein structures. SITEHOUND \cite{hernandez2009sitehound} uses a carbon and phosphate probe inside a grid that covers the entire protein. The grid points with higher interaction energies are clustered and determine the binding residues. CURPOCKET \cite{liu2020cb} is a recent spatial geometric measurement method that computes the curvature distribution of the protein surface and identifies the clusters of concave regions. While 3D structure-based methods have been widely used, they depend on the state of the provided protein 3D structure.
 
+\newpage
 Template similarity-based methods do not consider proteins as independent entities but as evolved from structurally, functionally or sequentially similar proteins. S-SITE \cite{yang2013protein} employs the Needleman-Wunsch algorithm to align the query protein to each of the proteins in the BioLip \cite{yang2012biolip} database and selects similar sequences according to the alignment. The binding residues of the aligned proteins which occur more frequently are selected for predicting the binding site.
 
 Traditional machine learning-based methods promote the application of artificial intelligence in Biochemistry. 3D structure-based and template similarity-based methods complement each other well. Machine learning is used to integrate the information of both methods and apply mathematical functions to improve prediction accuracy. P2RANK \cite{krivak2018p2rank} uses a random forest algorithm to predict ligandibility scores across the entire protein surface. The points with high scores are then clustered into a single binding pocket.
@@ -175,7 +176,7 @@ Each sample protein in the dataset consists of one or more protein sequences. Le
 \begin{figure}
     \caption{\centering Architecture of the deep learning model}
     \centering
-    \noindent\includegraphics[scale=0.37]{architecture}
+    \noindent\includegraphics[scale=0.36]{architecture}
     \label{fig:architecture}
 \end{figure}
 
@@ -295,6 +296,7 @@ Figure \ref{fig:valid_dcc} denotes the cross-validation results. The deep learni
 
 
 \section{Discussion}
+\subsection{MCC}
 \quad The Matthew's Correlation varies from $[-1, +1]$, with $+1$ representing a perfect prediction, 0 representing no better than a random prediction and -1 representing total disagreement between the prediction and the observation. The MCC on the test set seems to be ranging from -0.11 to +1, which may seem surprising at first but shows the effectiveness of the model.
 
 \subsection{Case Studies}
@@ -328,6 +330,18 @@ Figure \ref{fig:valid_dcc} denotes the cross-validation results. The deep learni
     \label{fig:6pf6}
 \end{figure}
 
+\subsection{DeepCSeqSite Comparison}
+All the available methods for predicting binding site of a protein based on sequence, predict the site for only a specific set of ligands, while our model predicts the most ligandable binding site irrespective of the ligand. Hence, there is no available method of comparison for the sequence-based prediction of binding residues on the scPDB dataset.
+
+\newpage
+As a simple way to test the effectiveness of our model against DeepCSeqSite's model, we followed two approaches:
+\begin{enumerate}
+    \item Run the trained DeepCSeqSite model on our test set
+    \item Use DeepCSeqSite model architecture, train on our dataset, and then test
+\end{enumerate}
+
+Both approaches failed to provide good results, with approach 1 providing an MCC score of 0.05 and approach 2 providing an MCC score of 0.1
+
 \subsection{Areas of Improvement}
 \begin{itemize}
     \item The training data was split into multiple folds by UniprotIDs, which means that similar structures went into the same fold. However, this does not completely guarantee that proteins with similar sequences go into the same fold as well.
@@ -340,17 +354,7 @@ Figure \ref{fig:valid_dcc} denotes the cross-validation results. The deep learni
 
 \end{acknowledgement}
 
-\begin{suppinfo}
-
-    This will usually read something like: ``Experimental procedures and
-    characterization data for all new compounds. The class will
-    automatically add a sentence pointing to the information on-line:
-
-\end{suppinfo}
-
+\newpage
 \bibliography{achemso-demo}
 
 \end{document}
-
-% Add more introduction and references
-% Do the metric where if greater than 50\% of the binding site is correct, mark it as 1, else mark it as 0 

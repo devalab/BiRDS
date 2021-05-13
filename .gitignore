@@ -112,3 +112,13 @@ venv.bak/
 extras
 
 preprocessing/*.ipynb
+
+# Manuscript
+manuscript/acs-bindingsite_seq.bib
+manuscript/bindingsite_seq.aux
+manuscript/bindingsite_seq.bbl
+manuscript/bindingsite_seq.blg
+manuscript/bindingsite_seq.fdb_latexmk
+manuscript/bindingsite_seq.fls
+manuscript/bindingsite_seq.out
+manuscript/bindingsite_seq.synctex.gz
