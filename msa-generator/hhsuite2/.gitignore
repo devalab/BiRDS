@@ -1,0 +1,8 @@
+# vim temporary backup
+.*.sw*
+
+# object files
+*.o
+
+# compiled python file
+*.pyc

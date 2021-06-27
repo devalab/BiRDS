@@ -1,0 +1,6 @@
+README.md
+setup.py
+pbsp.egg-info/PKG-INFO
+pbsp.egg-info/SOURCES.txt
+pbsp.egg-info/dependency_links.txt
+pbsp.egg-info/top_level.txt
