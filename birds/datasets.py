@@ -110,7 +110,10 @@ class scPDB(Dataset):
         if not flag:
             return None
         mapping = {}
-        print("Loading", name)
+        if self.test:
+            print("Loading", name, "of test set")
+        else:
+            print("Loading", name, "of train set")
         tmp = glob(os.path.join(self.preprocessed_dir, "*", name + "_?.npy"))
         if tmp == []:
             tmp = glob(os.path.join(self.msa_dir, "*", name + "_?.npy"))

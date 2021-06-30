@@ -228,7 +228,8 @@ def batch_metrics(y_preds, data, meta, is_logits=True, threshold=0.5):
     y_preds, y_trues = batch_work(y_preds, data["label"], meta["length"])
     if is_logits:
         y_preds = torch.sigmoid(y_preds)
-    y_preds = (y_preds > threshold).bool()
+    if threshold:
+        y_preds = (y_preds > threshold).bool()
     y_trues = y_trues.bool()
     # top_cluster(y_preds, y_trues, data, meta)
     # return {}

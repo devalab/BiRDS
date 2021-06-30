@@ -83,6 +83,7 @@ def tune_net(config, scheduler, hparams):
 
 if __name__ == "__main__":
     hparams = parse_arguments()
+    hparams.scheduler = "asha"
     config = {
         "kernel_sizes": tune.choice([[3, 3], [5, 5], [7, 7]]),
         "layers": tune.choice(
@@ -92,19 +93,22 @@ if __name__ == "__main__":
         # "net_lr": tune.loguniform(1e-4, 1e-1),
         # "net_lr": 0.01,
     }
-    # scheduler = PopulationBasedTraining(
-    #     time_attr="training_iteration",
-    #     metric="v_mcc",
-    #     mode="max",
-    #     perturbation_interval=8,
-    #     hyperparam_mutations={"lr": lambda: tune.loguniform(1e-4, 1e-1).func(None)},
-    # )
-    scheduler = ASHAScheduler(
-        metric="v_mcc",
-        mode="max",
-        max_t=hparams.max_epochs,
-        grace_period=10,
-        reduction_factor=2,
-    )
-    # scheduler = FIFOScheduler()
+    if hparams.scheduler == "asha":
+        scheduler = ASHAScheduler(
+            metric="v_mcc",
+            mode="max",
+            max_t=hparams.max_epochs,
+            grace_period=10,
+            reduction_factor=2,
+        )
+    elif hparams.scheduler == "fifo":
+        scheduler = FIFOScheduler()
+    else:
+        scheduler = PopulationBasedTraining(
+            time_attr="training_iteration",
+            metric="v_mcc",
+            mode="max",
+            perturbation_interval=8,
+            hyperparam_mutations={"lr": lambda: tune.loguniform(1e-4, 1e-1).func(None)},
+        )
     tune_net(config, scheduler, hparams)
