@@ -13,13 +13,14 @@ from birds.net import Net
 
 
 def validate(net):
+    print("Running model " + net.train_ds.fold + " on its validation set")
     dcc = []
     cm = defaultdict(int)
     fnl_metrics = {}
     for idx, batch in tqdm(enumerate(net.val_dataloader())):
         batch = move_data_to_device(batch, net.device)
         metrics = net.validation_step(batch, idx)
-        dcc = dcc + [el.item() for el in metrics["f_v_dcc"]]
+        dcc += [el.item() for el in metrics["f_v_dcc"]]
         cm["tn"] += metrics["f_v_cm"][0][0]
         cm["fp"] += metrics["f_v_cm"][0][1]
         cm["fn"] += metrics["f_v_cm"][0][2]
@@ -30,6 +31,7 @@ def validate(net):
 
 
 def test(nets, threshold=5):
+    print("Running models on the test set")
     test_dl = nets[0].test_dataloader()
     device = nets[0].device
     dcc = []
@@ -43,7 +45,7 @@ def test(nets, threshold=5):
             y_preds.append(y_pred)
         y_pred = (torch.stack(y_preds).sum(dim=0) >= threshold).bool()
         metrics = batch_metrics(y_pred, data, meta, False, None)
-        dcc = dcc + [el.item() for el in metrics["f_dcc"]]
+        dcc += [el.item() for el in metrics["f_dcc"]]
         cm["tn"] += metrics["f_cm"][0][0]
         cm["fp"] += metrics["f_cm"][0][1]
         cm["fn"] += metrics["f_cm"][0][2]
@@ -121,16 +123,19 @@ def load_nets_frozen(hparams):
         nets.append(net)
         nets[i].freeze()
         nets[i].eval()
+        print()
     return nets
 
 
 def print_metrics(cm):
+    print("-------------------------")
     print("IOU: ", IOU(cm).item())
     print("MCC: ", MCC(cm).item())
     print("ACCURACY: ", ACCURACY(cm).item())
     print("RECALL: ", RECALL(cm).item())
     print("PRECISION: ", PRECISION(cm).item())
     print("F1: ", F1(cm).item())
+    print("-------------------------")
 
 
 def main(hparams):
@@ -143,16 +148,16 @@ def main(hparams):
             metrics.append(metric)
             print("Fold " + str(i) + " metrics")
             print_metrics(cm)
-
-        # dcc_figure([metric["dcc"] for metric in metrics])
-        cm = defaultdict(int)
-        for metric in metrics:
-            for key, val in metric["cm"].items():
-                cm[key] += val
-        print("Aggregated Validation metrics")
-        print_metrics(cm)
     else:
         metrics = test(nets)
+
+    dcc_figure([metric["dcc"] for metric in metrics])
+    cm = defaultdict(int)
+    for metric in metrics:
+        for key, val in metric["cm"].items():
+            cm[key] += val
+    print("Aggregated metrics")
+    print_metrics(cm)
 
 
 def parse_arguments():

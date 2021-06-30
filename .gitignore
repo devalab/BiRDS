@@ -35,11 +35,14 @@ venv.bak/
 # !/outputs/**/
 # !/outputs/**/.gitkeep
 
-# /data/**
-# !/data/AA_properties.csv
-# !/data/obseleted.txt
+/data/**
+!/data/AA_properties.csv
+!/data/obseleted.txt
+data.zip
+model.tar.zst
 
 extras
+model
 
 # preprocessing/*.ipynb
 
