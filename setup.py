@@ -3,7 +3,7 @@
 from setuptools import setup, find_packages
 
 setup(
-    name="pbsp",
+    name="birds",
     version="1.0.0",
     description="Predict the binding site of a protein from its sequence",
     author="Vineeth Chelur",

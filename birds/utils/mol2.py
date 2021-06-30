@@ -1,8 +1,7 @@
 from collections import OrderedDict
 
 import pandas as pd
-
-from pbsp.utils.NWalign import (
+from birds.utils.NWalign import (
     calcualte_score_gotoh,
     code_with_modified_residues as aa3to1,
     trace_back_gotoh,

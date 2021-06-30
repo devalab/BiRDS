@@ -3,10 +3,10 @@ from functools import partial
 from pytorch_lightning.callbacks import Callback
 from ray import tune
 from ray.tune import CLIReporter
-from pbsp.train import parse_arguments, MyModelCheckpoint
+from birds.train import parse_arguments, MyModelCheckpoint
 from ray.tune.schedulers import ASHAScheduler, PopulationBasedTraining, FIFOScheduler
 from argparse import Namespace
-from pbsp.net import Net
+from birds.net import Net
 
 
 class TuneReportCallback(Callback):

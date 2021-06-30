@@ -3,56 +3,13 @@ from argparse import ArgumentParser, Namespace
 
 import pytorch_lightning as pl
 
-from pbsp.datasets import scPDB
-from pbsp.models import ResNet
-from pbsp.net import Net
-
-
-class MyModelCheckpoint(pl.callbacks.ModelCheckpoint):
-    def format_checkpoint_name(self, epoch, metrics, ver=None):
-        if self.filename == "{epoch}":
-            self.filename = "{epoch}-{v_mcc:.3f}-{v_acc:.3f}-{v_f1:.3f}"
-        return super().format_checkpoint_name(epoch, metrics, ver)
+from birds.models import ResNet
+from birds.net import Net
 
 
 def main(hparams):
-    pl.seed_everything(hparams.seed)
-    logger = pl.loggers.TestTubeLogger(
-        save_dir=hparams.weights_save_path, name=hparams.exp_name, create_git_tag=True
-    )
-    checkpoint_callback = MyModelCheckpoint(
-        monitor="v_mcc", verbose=True, save_top_k=3, mode="max",
-    )
-    bs = hparams.batch_size
-    if hparams.progress_bar_refresh_rate is None:
-        hparams.progress_bar_refresh_rate = 64 // bs
-    const_params = {
-        "max_epochs": hparams.net_epochs,
-        "row_log_interval": 64 // bs,
-        "log_save_interval": 256 // bs,
-        "gradient_clip_val": 0,
-    }
-    hparams = Namespace(**vars(hparams), **const_params)
-    if not hparams.resume_from_checkpoint:
-        accumulate_grad_batches = {5: max(1, 16 // bs), 10: 64 // bs}
-        # accumulate_grad_batches = 1
-    else:
-        accumulate_grad_batches = 1
     print(hparams)
-    trainer = pl.Trainer.from_argparse_args(
-        hparams,
-        logger=logger,
-        checkpoint_callback=checkpoint_callback,
-        val_check_interval=0.5,
-        # num_sanity_val_steps=60,
-        profiler=True,
-        accumulate_grad_batches=accumulate_grad_batches,
-        deterministic=True,
-        weights_summary="full",
-        # track_grad_norm=2,
-        # fast_dev_run=True,
-        # overfit_pct=0.05,
-    )
+
     net = Net(hparams)
     trainer.fit(net)
 
@@ -112,14 +69,6 @@ def parse_arguments():
     )
     trainer_group.add_argument("--no-test", dest="run_tests", action="store_false")
     trainer_group.set_defaults(run_tests=True)
-    trainer_group.add_argument(
-        "--cgan",
-        dest="use_cgan",
-        action="store_true",
-        help="Train a Complementary GAN after main net training. Default: %(default)s",
-    )
-    trainer_group.add_argument("--no-cgan", dest="use_cgan", action="store_false")
-    trainer_group.set_defaults(use_cgan=False)
     trainer_group.add_argument(
         "--resume-from-checkpoint",
         metavar="PATH",

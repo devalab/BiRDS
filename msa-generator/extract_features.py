@@ -1,85 +1,95 @@
 import os
-import numpy as np
-from subprocess import run, PIPE
+from argparse import ArgumentParser
+from datetime import datetime
+from multiprocessing import Pool
+from subprocess import PIPE, run
 
-raw_dir = os.path.abspath("data/scPDB")
-
-
-def delete_two_lines(original_file, line_number):
-    """ Delete a line from a file at the given line number """
-    is_skipped = False
-    current_index = 0
-    dummy_file = original_file + ".bak"
-    # Open original file in read only mode and dummy file in write mode
-    with open(original_file, "r") as read_obj, open(dummy_file, "w") as write_obj:
-        # Line by line copy data from original file to dummy file
-        for line in read_obj:
-            # If current line number matches the given line number then skip copying
-            if current_index != line_number and current_index != line_number + 1:
-                write_obj.write(line)
-            else:
-                is_skipped = True
-            current_index += 1
-
-    # If any line is skipped then rename dummy file as original file
-    if is_skipped:
-        os.remove(original_file)
-        os.rename(dummy_file, original_file)
-    else:
-        os.remove(dummy_file)
+data_dir = os.path.abspath("./data")
+raw_dir = os.path.join(data_dir, "msa")
+hhlib = os.path.abspath("./hhsuite2")
+os.environ["HHLIB"] = hhlib
+splits_dir = os.path.abspath("./splits")
+aaprob = os.path.join(hhlib, "bin", "AlnAaProb")
+a3m2mtx = os.path.join(hhlib, "scripts", "a3m2mtx.pl")
+psipred = os.path.join(hhlib, "scripts", "hhb_psipred.pl")
+wide = "-------------------------"
 
 
-def fix_a3m(file, error):
-    line_no = int(error.strip().split(" ")[-1]) - 2
-    delete_two_lines(file, line_no)
+def run_cmd(pis, chain, cmds, file, name):
+    log_out = ""
+    try:
+        if not os.path.exists(file) or os.stat(file).st_size == 0:
+            log_out += " ".join([wide, pis, chain, name.upper(), wide, "\n"])
+            start = datetime.now()
+            if not isinstance(cmds[0], list):
+                cmds = [cmds]
+            for cmd in cmds:
+                # print(cmd)
+                if cmd[0] == aaprob:
+                    output = run(cmd, stdout=open(file, "w"), stderr=PIPE)
+                else:
+                    output = run(cmd, stdout=PIPE, stderr=PIPE)
+                    log_out += output.stdout.decode() + "\n"
+                log_out += output.stderr.decode() + "\n"
+                log_out += str(output.returncode) + "\n"
+            log_out += " ".join(["Time Taken:", str(datetime.now() - start), "\n"])
+            log_out += " ".join([wide, pis, chain, name.upper(), wide, "\n\n"])
+    # print(log_out)
+    except Exception:
+        log_out += " ".join(["MYERR: ", pis, chain, name, " ".join(cmd), "\n"])
+    return log_out
 
 
-def get_pssm():
-    cmd1 = "./bin/esl-weight -p --amino --informat a2m -o weighted "
-    cmd2 = "./bin/esl-alistat --weight --amino --icinfo icinfo --cinfo cinfo weighted"
-    cmd3 = "rm weighted icinfo cinfo"
-    for pdb_id_struct in sorted(os.listdir(raw_dir)):
-        pre = os.path.join(raw_dir, pdb_id_struct)
-        files = os.listdir(pre)
-        for file in files:
-            if file[2:] != "a3m":
-                continue
-            chain = file[0]
-            if os.path.exists(os.path.join(pre, chain + ".pssm")):
-                continue
-            output = run(
-                cmd1 + os.path.join(pre, file), shell=True, stderr=PIPE, stdin=PIPE
-            )
-            if output.returncode != 0:
-                print(pdb_id_struct + " " + chain)
-                fix_a3m(os.path.join(pre, file), output.stderr.decode())
-                exit(1)
-            flg = os.system(cmd2)
-            if flg:
-                print(pdb_id_struct + " " + chain)
-                exit(1)
-            i_icinfo = open("icinfo", "r")
-            i_cinfo = open("cinfo", "r")
-            evos = []
-            for buf_icinfo in range(9):
-                buf_icinfo = i_icinfo.readline()
-            for buf_cinfo in range(10):
-                buf_cinfo = i_cinfo.readline()
-            while buf_icinfo != "//\n":
-                buf_icinfo_split = buf_icinfo.split()
-                if buf_icinfo_split[0] != "-":
-                    ps = np.array([float(p) for p in buf_cinfo.split()[1:]])
-                    ps = ps / np.sum(ps)
-                    evo = np.append(ps, float(buf_icinfo_split[3]) / np.log2(20))
-                    evos.append(np.tile(evo, 2))
-                buf_icinfo = i_icinfo.readline()
-                buf_cinfo = i_cinfo.readline()
-            i_icinfo.close()
-            i_cinfo.close()
-            np.savetxt(
-                os.path.join(pre, chain + ".pssm"), np.stack(evos).T[:21], fmt="%1.5f"
-            )
-            os.system(cmd3)
+def task(file):
+    log = ""
+    start = datetime.now()
+    pis, chain = file.strip().split("/")
+    chain = chain[0]
+    pre = os.path.join(raw_dir, pis)
+    aln = os.path.join(pre, chain + ".aln")
+    if not os.path.exists(aln):
+        log += " ".join(["MYERR:", args.file, pis, chain, "alignment does not exist"])
+        return log
+    fasta = os.path.join(pre, chain + ".fasta")
+    mtx = os.path.join(pre, chain + ".mtx")
+    aap = os.path.join(pre, chain + ".aap")
+    ss2 = os.path.join(pre, chain + ".ss2")
+    solv = os.path.join(pre, chain + ".solv")
+
+    cmd = [aaprob, aln]
+    log += run_cmd(pis, chain, cmd, aap, "AAP")
+
+    cmd = [a3m2mtx, aln, mtx, " -aln -neff 0"]
+    log += run_cmd(pis, chain, cmd, mtx, "MTX")
+
+    cmd = [psipred, fasta, " dummy ", ss2, mtx, solv]
+    log += run_cmd(pis, chain, cmd, solv, "SS2 and SOLV")
+
+    log += " ".join(["Total Time", pis, chain, str(datetime.now() - start), "\n\n\n\n"])
+    return log
 
 
-get_pssm()
+def main(args):
+    with open(os.path.join(splits_dir, args.file), "r") as f:
+        lines = f.readlines()
+
+    with Pool(args.ncpu) as pool:
+        for i, result in enumerate(pool.imap_unordered(task, lines)):
+            print(result)
+            print(i, "PISC DONE")
+
+
+if __name__ == "__main__":
+    parser = ArgumentParser(
+        description="Get secondary structure, amino-acid probabilites and solvent accessibility features",
+        add_help=True,
+    )
+    parser.add_argument(
+        "file",
+        type=str,
+        help="A file containing list of <pdb_id>/<chain_id>* lines for which to generate MSAs",
+    )
+    parser.add_argument("-c", "--ncpu", default=1, type=int)
+    args = parser.parse_args()
+    print(args)
+    main(args)

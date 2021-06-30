@@ -2,7 +2,7 @@
 
 ## Environment
 
-The project can be setup using conda. Run the following commands in the root folder of the project.
+The project can be setup using conda. Run the following commands in the root folder of the project after cloning it
 
 ```bash
 conda env create -f environment.yml
@@ -25,6 +25,6 @@ cd data/2018_scPDB
 for file in *.tar.zst; do tar -I zstd -xf "$file"; done
 cd -
 
-cd pbsp
+cd birds
+python train.py --help
 ```
-

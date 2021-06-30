@@ -7,15 +7,15 @@ from torch.optim import Adam
 from torch.optim.lr_scheduler import ReduceLROnPlateau
 from torch.utils.data import DataLoader, Subset
 
-from pbsp.datasets import scPDB
-from pbsp.metrics import (
+from birds.datasets import scPDB
+from birds.metrics import (
     batch_loss,
     batch_metrics,
     make_figure,
     weighted_bce_loss,
     weighted_focal_loss,
 )
-from pbsp.models import Detector, ResNet
+from birds.models import Detector, ResNet
 
 SMOOTH = 1e-6
 

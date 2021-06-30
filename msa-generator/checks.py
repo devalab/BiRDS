@@ -1,100 +1,76 @@
-import sys
 import os
-import numpy as np
-import re
+from collections import defaultdict
 
-raw_dir = os.path.abspath("data/scPDB")
+cfd = os.path.dirname(os.path.abspath(__file__))
+msa_dir = os.path.join(cfd, "data/prep")
+splits_dir = os.path.join(cfd, "splits")
+unique = os.path.join(splits_dir, "unique")
+file_types = ["fasta", "aln", "a3m", "pssm", "aap", "mtx", "ss2", "solv"]
+cnts = defaultdict(lambda: [0] * len(file_types))
 
 
-def aln_exists():
-    splits_dir = os.path.abspath("splits")
-    try:
-        arg = sys.argv[1]
-    except IndexError:
-        arg = "unique"
+def file_len(fname):
+    with open(fname) as f:
+        for i, l in enumerate(f):
+            pass
+    return i + 1
 
-    with open(os.path.join(splits_dir, arg), "r") as f:
+
+def check_pssm(fname, seq):
+    return file_len(fname) == 21
+
+
+def check_mtx(fname, seq):
+    return file_len(fname) == (len(seq) + 14)
+
+
+def check_aap(fname, seq):
+    return file_len(fname) == (len(seq) + 3)
+
+
+def check_ss2(fname, seq):
+    return file_len(fname) == (len(seq) + 2)
+
+
+def check_solv(fname, seq):
+    return file_len(fname) == len(seq)
+
+
+for file in sorted(os.listdir(splits_dir)):
+    with open(os.path.join(splits_dir, file), "r") as f:
         lines = f.readlines()
+    for line in lines:
+        pis, chain = line.strip().split()[0].split("/")
+        chain = chain[0]
+        pre = os.path.join(msa_dir, pis, chain + ".")
+        with open(pre + "fasta", "r") as f:
+            seq = "".join(f.read().splitlines()[1:]).strip()
 
-    cnt = 0
-
-    for file in lines:
-        if arg == "unique":
-            file, chain = file.strip().split()[0].split("/")
-        else:
-            file, chain = file.strip().split("/")
-        chain = chain[:-1]
-        pre = os.path.join(raw_dir, file)
-        if os.path.exists(os.path.join(pre, chain + ".aln")):
-            # print(file + "_" + chain + " alignment exists")
-            cnt += 1
-
-    print(arg, cnt)
-
-
-def a3m_format():
-    pdb_id_struct = sys.argv[1]
-    chain = sys.argv[2]
-    a3m = os.path.join(raw_dir, pdb_id_struct, chain + ".a3m")
-    with open(a3m, "r") as f:
-        lines = f.readlines()
-    ln = len(lines[1])
-    for i in range(3, len(lines), 2):
-        assert ln == len(lines[i])
-
-
-def check_pssm(pdb_id_struct, chain_id):
-    pssm = os.path.join(raw_dir, pdb_id_struct, chain_id + ".pssm")
-    if not os.path.exists(pssm):
-        return
-    with open(pssm, "r") as f:
-        lines = f.readlines()
-    for i, line in enumerate(lines):
-        line = np.array(line.strip().split(), dtype=np.float32)
-        if np.any(np.isnan(line)) is np.True_:
-            print(pdb_id_struct, chain_id)
-            break
-
-
-def check_dna_rna_seqs():
-    def match(strg, search=re.compile(r"[^ACGTURYKMSWBDHVN\-\.]").search):
-        return not bool(search(strg))
-
-    for pdb_id_struct in sorted(os.listdir(raw_dir)):
-        pre = os.path.join(raw_dir, pdb_id_struct)
-        files = os.listdir(pre)
-        for file in files:
-            if file[2:] != "aln":
+        for i, ext in enumerate(file_types):
+            ext_file = pre + ext
+            if not (os.path.exists(ext_file) and os.stat(ext_file).st_size != 0):
                 continue
-            chain = file[0]
-            with open(os.path.join(pre, file), "r") as f:
-                seq = f.readline().strip()
-            if match(seq):
-                print(pdb_id_struct, chain)
 
+            if "check_" + ext in globals():
+                try:
+                    tmp = globals()["check_" + ext](ext_file, seq)
+                    if not tmp:
+                        continue
+                        # print(ext_file.split("/")[-2:])
+                        # os.remove(ext_file)
+                except Exception:
+                    continue
+                    # print(ext_file.split("/")[-2:])
+                    # os.remove(ext_file)
 
-def check_aln(pdb_id_struct, chain_id):
-    aln = os.path.join(raw_dir, pdb_id_struct, chain_id + ".aln")
-    if not os.path.exists(aln) or os.stat(aln).st_size == 0:
-        print(pdb_id_struct, chain_id)
+            cnts[file][i] += 1
 
+print("{:<10}".format("file"), end=" ")
+for ext in file_types:
+    print("{:<10}".format(ext), end=" ")
 
-def check_a3m(pdb_id_struct, chain_id):
-    a3m = os.path.join(raw_dir, pdb_id_struct, chain_id + ".a3m")
-    if not os.path.exists(a3m) or os.stat(a3m).st_size == 0:
-        print(pdb_id_struct, chain_id)
-
-
-with open("./splits/unique", "r") as f:
-    lines = f.readlines()
-
-for line in lines:
-    line = line.strip().split()
-    pdb_id_struct, chain_id = line[0].split("/")
-    chain_id = chain_id[:-1]
-    # check_aln(pdb_id_struct, chain_id)
-    check_a3m(pdb_id_struct, chain_id)
-#     check_pssm(pdb_id_struct, chain_id)
-
-# check_dna_rna_seqs()
-# a3m_format()
+for key, lst in cnts.items():
+    print("\n{:<10}".format(key), end=" ")
+    for val in lst:
+        print("{:<10}".format(val), end=" ")
+print()

@@ -8,7 +8,7 @@ import os
 # from argparse import ArgumentParser
 from tqdm import tqdm
 from collections import defaultdict
-from pbsp.net import Net
+from birds.net import Net
 from pytorch_lightning.utilities.apply_func import move_data_to_device
 import matplotlib.pyplot as plt
 import numpy as np
@@ -131,7 +131,7 @@ for metric in metrics:
 # In[44]:
 
 
-from pbsp.metrics import *
+from birds.metrics import *
 
 print("IOU: ", IOU(cm).item())
 print("MCC: ", MCC(cm).item())

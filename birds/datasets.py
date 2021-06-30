@@ -30,20 +30,10 @@ class scPDB(Dataset):
 
         # Get features and labels that are small in size
         self.sequences, self.labels = self.get_sequences_and_labels()
-        # if hparams.use_cb_coords:
-        #     self.coords = self.get_npy("cb_coords", True)
-        # else:
-        #     self.coords = self.get_npy("ca_coords", True)
         self.aap = self.get_npy("aap", hparams.use_aap)
         self.pssm = self.get_npy("pssm", hparams.use_pssm)
         self.ss2 = self.get_npy("ss2", hparams.use_ss2)
         self.solv = self.get_npy("solv", hparams.use_solv)
-        self.spot_ss3 = self.get_npy("ss3", hparams.use_ss3)
-        self.spot_ss8 = self.get_npy("ss8", hparams.use_ss8)
-        self.spot_asa = self.get_npy("asa", hparams.use_asa)
-        self.spot_hse = self.get_npy("hse", hparams.use_hse)
-        self.spot_cn13 = self.get_npy("cn13", hparams.use_cn13)
-        self.spot_torsion = self.get_npy("torsion", hparams.use_torsion)
 
         self.available_data = sorted(list(self.labels.keys()))
         # ------------MAPPINGS------------
@@ -194,27 +184,6 @@ class scPDB(Dataset):
             if self.hparams.use_solv:
                 inputs.append(self.solv[mpisc])
 
-            if self.hparams.use_ss3:
-                inputs.append(self.spot_ss3[mpisc] / 100.0)
-            if self.hparams.use_ss8:
-                inputs.append(self.spot_ss8[mpisc] / 100.0)
-            if self.hparams.use_asa:
-                # RSA = ASA / MaxASA
-                tmp = self.spot_asa[mpisc]
-                inputs.append(tmp / tmp.max())
-            if self.hparams.use_cn13:
-                # Normalize the Contact Number
-                tmp = self.spot_cn13[mpisc]
-                inputs.append(tmp / tmp.max())
-            if self.hparams.use_hse:
-                # Normalize the HSE
-                tmp = self.spot_hse[mpisc]
-                # Divide each row by the maximum
-                inputs.append(tmp / tmp.max(axis=1)[:, None])
-            if self.hparams.use_torsion:
-                # Normalize or convert to sin and cos
-                inputs.append(self.spot_torsion[mpisc] / 360.0)
-
             _data["feature"] = np.vstack(inputs).astype(np.float32)
             _data["label"] = self.labels[pisc].astype(np.float32)
             if self.test or index in self.valid_indices:
@@ -329,60 +298,6 @@ class scPDB(Dataset):
         )
         parser.add_argument("--no-solv", dest="use_solv", action="store_false")
         parser.set_defaults(use_solv=True)
-
-        parser.add_argument(
-            "--ss3",
-            dest="use_ss3",
-            action="store_true",
-            help="Use 3-state secondary structure predicted using SPOT-1D. Default: %(default)s",
-        )
-        parser.add_argument("--no-ss3", dest="use_ss3", action="store_false")
-        parser.set_defaults(use_ss3=False)
-
-        parser.add_argument(
-            "--ss8",
-            dest="use_ss8",
-            action="store_true",
-            help="Use 8-state secondary structure predicted using SPOT-1D. Default: %(default)s",
-        )
-        parser.add_argument("--no-ss8", dest="use_ss8", action="store_false")
-        parser.set_defaults(use_ss8=False)
-
-        parser.add_argument(
-            "--asa",
-            dest="use_asa",
-            action="store_true",
-            help="Use Accessible Surface area predicted using SPOT-1D. Default: %(default)s",
-        )
-        parser.add_argument("--no-asa", dest="use_asa", action="store_false")
-        parser.set_defaults(use_asa=False)
-
-        parser.add_argument(
-            "--hse",
-            dest="use_hse",
-            action="store_true",
-            help="Use Half Sphere Exposure predicted using SPOT-1D. Default: %(default)s",
-        )
-        parser.add_argument("--no-hse", dest="use_hse", action="store_false")
-        parser.set_defaults(use_hse=False)
-
-        parser.add_argument(
-            "--torsion",
-            dest="use_torsion",
-            action="store_true",
-            help="Use Torsion angles predicted using SPOT-1D. Default: %(default)s",
-        )
-        parser.add_argument("--no-torsion", dest="use_torsion", action="store_false")
-        parser.set_defaults(use_torsion=False)
-
-        parser.add_argument(
-            "--cn13",
-            dest="use_cn13",
-            action="store_true",
-            help="Use Contact Number predicted using SPOT-1D. Default: %(default)s",
-        )
-        parser.add_argument("--no-cn13", dest="use_cn13", action="store_false")
-        parser.set_defaults(use_cn13=False)
 
         parser.add_argument(
             "--cb-coords",

@@ -3,6 +3,16 @@ __pycache__/
 *.py[cod]
 *$py.class
 
+# Distribution / packaging
+.Python
+develop-eggs/
+eggs/
+.eggs/
+wheels/
+*.egg-info/
+.installed.cfg
+*.egg
+
 # Jupyter Notebook
 .ipynb_checkpoints
 

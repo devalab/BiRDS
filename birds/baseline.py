@@ -18,7 +18,7 @@ from torch.optim.lr_scheduler import ReduceLROnPlateau
 from torch.utils.data import DataLoader, Dataset, Subset
 from tqdm import tqdm
 
-from pbsp.metrics import batch_loss, batch_metrics, weighted_bce_loss, make_figure
+from birds.metrics import batch_loss, batch_metrics, weighted_bce_loss, make_figure
 
 SMOOTH = 1e-6
 

@@ -82,7 +82,7 @@ def reindex_pdb_by_sequence(sequence_ref, PDBtxt, chain_id):
     only ATOM or MSE will be parsed
     """
     # convert PDB to fasta ####
-    from pbsp.utils.pdb2fasta import pdbtxt2seq
+    from birds.utils.pdb2fasta import pdbtxt2seq
 
     header_list, sequence_list = pdbtxt2seq(PDBtxt, PERMISSIVE="MSE", allowX=True)
     index = None
@@ -95,7 +95,7 @@ def reindex_pdb_by_sequence(sequence_ref, PDBtxt, chain_id):
     sequence_pdb = sequence_list[index]
 
     # perform NeedlemanWunsch ####
-    from pbsp.utils.NWalign import calcualte_score_gotoh, trace_back_gotoh
+    from birds.utils.NWalign import calcualte_score_gotoh, trace_back_gotoh
 
     # idir (DP path); jpV (Horizontal jump number); jpH (Vertical jump number)
     idir, jpV, jpH = calcualte_score_gotoh(sequence_ref, sequence_pdb)
@@ -149,7 +149,7 @@ def reindex_pdb(startindex, infile, clean=True):
     """parse PDB file "infile", reindex it according to start index or
     sequence file "startindex", and return the text of renumbered PDB
     """
-    from pbsp.utils.NWalign import code_with_modified_residues
+    from birds.utils.NWalign import code_with_modified_residues
 
     fp = open(infile, "rU")
     PDBtxt = ""
@@ -186,7 +186,7 @@ def reindex_pdb(startindex, infile, clean=True):
     fp.close()
 
     if os.path.isfile(startindex):
-        from pbsp.utils.NWalign import readFastaOrRawSequence
+        from birds.utils.NWalign import readFastaOrRawSequence
 
         sequence_ref = readFastaOrRawSequence(startindex).replace("-", "")
         # Replace celenocystein with X (U with X)

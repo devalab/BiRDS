@@ -81,8 +81,8 @@ args = parser.parse_args()
 data_dir = os.path.abspath(os.path.expanduser(args.data_dir))
 ckpt_dir = os.path.abspath(os.path.expanduser(args.ckpt_dir))
 if not args.debug:
-    from pbsp.metrics import batch_metrics, batch_work
-    from pbsp.net import Net
+    from birds.metrics import batch_metrics, batch_work
+    from birds.net import Net
 
     nets = []
     metrics = []
