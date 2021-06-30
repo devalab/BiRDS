@@ -30,20 +30,24 @@ def validate(net):
     return fnl_metrics
 
 
-def test(nets, threshold=5):
+def predict(nets, data, meta, threshold=5):
+    y_preds = []
+    for i, net in enumerate(nets):
+        y_pred = (torch.sigmoid(net(data["feature"], meta["length"])) > 0.5).bool()
+        y_preds.append(y_pred)
+    return (torch.stack(y_preds).sum(dim=0) >= threshold).bool()
+
+
+def test(nets):
     print("Running models on the test set")
     test_dl = nets[0].test_dataloader()
     device = nets[0].device
     dcc = []
     cm = defaultdict(int)
     fnl_metrics = {}
-    for idx, batch in enumerate(test_dl):
+    for idx, batch in tqdm(enumerate(test_dl)):
         data, meta = move_data_to_device(batch, device)
-        y_preds = []
-        for i, net in enumerate(nets):
-            y_pred = (torch.sigmoid(net(data["feature"], meta["length"])) > 0.5).bool()
-            y_preds.append(y_pred)
-        y_pred = (torch.stack(y_preds).sum(dim=0) >= threshold).bool()
+        y_pred = predict(nets, data, meta)
         metrics = batch_metrics(y_pred, data, meta, False, None)
         dcc += [el.item() for el in metrics["f_dcc"]]
         cm["tn"] += metrics["f_cm"][0][0]
@@ -56,6 +60,7 @@ def test(nets, threshold=5):
 
 
 def dcc_figure(values):
+    len_values = len(values)
     values = np.nan_to_num(values, nan=20000, posinf=20000, neginf=20000)
     figure = plt.figure(figsize=(12, 12))
     x = np.linspace(0, 20, 1000)
@@ -74,7 +79,7 @@ def dcc_figure(values):
         "tab:olive",
         "tab:cyan",
     ]
-    for i, colour in enumerate(colours):
+    for i, colour in enumerate(colours[:len_values]):
         y_new = gaussian_filter1d(y[i], sigma=5)
         plt.plot(x, y_new, colour, label="Fold " + str(i + 1))
     plt.legend()
@@ -139,6 +144,7 @@ def print_metrics(cm):
 
 
 def main(hparams):
+    print(hparams)
     nets = load_nets_frozen(hparams)
 
     if hparams.validate:
@@ -147,17 +153,20 @@ def main(hparams):
             metric = validate(net)
             metrics.append(metric)
             print("Fold " + str(i) + " metrics")
-            print_metrics(cm)
+            print_metrics(metric["cm"])
+
+        dcc_figure([metric["dcc"] for metric in metrics])
+        cm = defaultdict(int)
+        for metric in metrics:
+            for key, val in metric["cm"].items():
+                cm[key] += val
+        print("Aggregated validation metrics")
+        print_metrics(cm)
     else:
         metrics = test(nets)
-
-    dcc_figure([metric["dcc"] for metric in metrics])
-    cm = defaultdict(int)
-    for metric in metrics:
-        for key, val in metric["cm"].items():
-            cm[key] += val
-    print("Aggregated metrics")
-    print_metrics(cm)
+        dcc_figure([metrics["dcc"]])
+        print("Aggregated test metrics")
+        print_metrics(metrics["cm"])
 
 
 def parse_arguments():
