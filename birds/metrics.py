@@ -5,7 +5,8 @@ import matplotlib.pyplot as plt
 import numpy as np
 import torch
 from torch.nn.functional import binary_cross_entropy_with_logits
-from torch_cluster import fps, grid_cluster
+
+# from torch_cluster import fps, grid_cluster
 
 # Utils
 
@@ -132,64 +133,64 @@ def DCC(y_pred, y_true, data, meta):
     return dcc
 
 
-def GRID(y_pred, y_true, data, meta):
-    idx = 0
-    out = 0
-    grid_size = torch.Tensor([40.0, 40.0, 40.0]).to(y_true.device)
-    for i, length in enumerate(meta["length"]):
-        coords = data["coords"][i, ..., :length]
-        true_pocket = coords[:, y_true[idx : idx + length]]
-        true_pocket = true_pocket[:, ~torch.isinf(true_pocket[0])].t()
-        true_centroid = torch.mean(true_pocket, dim=0)
-        pred_pocket = coords[:, y_pred[idx : idx + length]]
-        pred_pocket = pred_pocket[:, ~torch.isinf(pred_pocket[0])].t()
-        if len(pred_pocket) == 0:
-            idx += length
-            continue
-        pred_labels = grid_cluster(pred_pocket, grid_size)
-        max_cluster = []
-        for val in pred_labels.unique():
-            cluster = (pred_labels == val).nonzero()
-            if len(max_cluster) < len(cluster):
-                max_cluster = cluster
-        pred_centroid = torch.mean(pred_pocket[max_cluster], dim=0)
-        # tmp = true_labels.unique()
-        # if len(tmp) != 1:
-        #     print(meta["pisc"][i], len(tmp))
-        return torch.norm(true_centroid - pred_centroid)
-        if torch.norm(true_centroid - pred_centroid) < 8.0:
-            out += 1
-        idx += length
-    return torch.tensor(float(out) / len(meta["length"])).float().to(y_true.device)
+# def GRID(y_pred, y_true, data, meta):
+#     idx = 0
+#     out = 0
+#     grid_size = torch.Tensor([40.0, 40.0, 40.0]).to(y_true.device)
+#     for i, length in enumerate(meta["length"]):
+#         coords = data["coords"][i, ..., :length]
+#         true_pocket = coords[:, y_true[idx : idx + length]]
+#         true_pocket = true_pocket[:, ~torch.isinf(true_pocket[0])].t()
+#         true_centroid = torch.mean(true_pocket, dim=0)
+#         pred_pocket = coords[:, y_pred[idx : idx + length]]
+#         pred_pocket = pred_pocket[:, ~torch.isinf(pred_pocket[0])].t()
+#         if len(pred_pocket) == 0:
+#             idx += length
+#             continue
+#         pred_labels = grid_cluster(pred_pocket, grid_size)
+#         max_cluster = []
+#         for val in pred_labels.unique():
+#             cluster = (pred_labels == val).nonzero()
+#             if len(max_cluster) < len(cluster):
+#                 max_cluster = cluster
+#         pred_centroid = torch.mean(pred_pocket[max_cluster], dim=0)
+#         # tmp = true_labels.unique()
+#         # if len(tmp) != 1:
+#         #     print(meta["pisc"][i], len(tmp))
+#         return torch.norm(true_centroid - pred_centroid)
+#         if torch.norm(true_centroid - pred_centroid) < 8.0:
+#             out += 1
+#         idx += length
+#     return torch.tensor(float(out) / len(meta["length"])).float().to(y_true.device)
 
 
-def FPS(y_pred, y_true, data, meta):
-    idx = 0
-    out = 0
-    for i, length in enumerate(meta["length"]):
-        coords = data["coords"][i, ..., :length]
-        true_pocket = coords[:, y_true[idx : idx + length]]
-        true_pocket = true_pocket[:, ~torch.isinf(true_pocket[0])].t()
-        pred_pocket = coords[:, y_pred[idx : idx + length]]
-        pred_pocket = pred_pocket[:, ~torch.isinf(pred_pocket[0])].t()
-        if len(pred_pocket) == 0:
-            idx += length
-            continue
-        true_fp = fps(true_pocket, ratio=0.5, random_start=False)
-        true_neighbours = true_pocket[
-            torch.ones_like(true_pocket[:, 0]).bool().scatter_(0, true_fp, 0.0)
-        ]
-        true_centroid = torch.mean(true_neighbours, dim=0)
-        pred_fp = fps(pred_pocket, ratio=0.5, random_start=False)
-        pred_neighbours = pred_pocket[
-            torch.ones_like(pred_pocket[:, 0]).bool().scatter_(0, pred_fp, 0.0)
-        ]
-        pred_centroid = torch.mean(pred_neighbours, dim=0)
-        return torch.norm(true_centroid - pred_centroid)
-        if torch.norm(true_centroid - pred_centroid) < 8.0:
-            out += 1
-        idx += length
-    return torch.tensor(out / len(meta["length"])).to(y_true.device)
+# def FPS(y_pred, y_true, data, meta):
+#     idx = 0
+#     out = 0
+#     for i, length in enumerate(meta["length"]):
+#         coords = data["coords"][i, ..., :length]
+#         true_pocket = coords[:, y_true[idx : idx + length]]
+#         true_pocket = true_pocket[:, ~torch.isinf(true_pocket[0])].t()
+#         pred_pocket = coords[:, y_pred[idx : idx + length]]
+#         pred_pocket = pred_pocket[:, ~torch.isinf(pred_pocket[0])].t()
+#         if len(pred_pocket) == 0:
+#             idx += length
+#             continue
+#         true_fp = fps(true_pocket, ratio=0.5, random_start=False)
+#         true_neighbours = true_pocket[
+#             torch.ones_like(true_pocket[:, 0]).bool().scatter_(0, true_fp, 0.0)
+#         ]
+#         true_centroid = torch.mean(true_neighbours, dim=0)
+#         pred_fp = fps(pred_pocket, ratio=0.5, random_start=False)
+#         pred_neighbours = pred_pocket[
+#             torch.ones_like(pred_pocket[:, 0]).bool().scatter_(0, pred_fp, 0.0)
+#         ]
+#         pred_centroid = torch.mean(pred_neighbours, dim=0)
+#         return torch.norm(true_centroid - pred_centroid)
+#         if torch.norm(true_centroid - pred_centroid) < 8.0:
+#             out += 1
+#         idx += length
+#     return torch.tensor(out / len(meta["length"])).to(y_true.device)
 
 
 # Loss Functions
@@ -236,8 +237,8 @@ def batch_metrics(y_preds, data, meta, is_logits=True, threshold=0.5):
         {
             "mcc": MCC(cm),
             "acc": ACCURACY(cm),
-            "fps": FPS(y_preds, y_trues, data, meta),
-            "grid": GRID(y_preds, y_trues, data, meta),
+            # "fps": FPS(y_preds, y_trues, data, meta),
+            # "grid": GRID(y_preds, y_trues, data, meta),
             "iou": IOU(cm),
             "precision": PRECISION(cm),
             "recall": RECALL(cm),

@@ -51,4 +51,7 @@ manuscript/bindingsite_seq.blg
 manuscript/bindingsite_seq.fdb_latexmk
 manuscript/bindingsite_seq.fls
 manuscript/bindingsite_seq.out
+manuscript/bindingsite_seq.log
 manuscript/bindingsite_seq.synctex.gz
+
+manuscript/supplementary.synctex.gz

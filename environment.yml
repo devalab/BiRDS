@@ -8,21 +8,20 @@ channels:
   - bioconda
 
 dependencies:
-  - torchvision=0.6.0
   - cudatoolkit=10.2
   - pytorch=1.5.0
-  - matplotlib=3.2.1
-  - jupyter=1.0.0
-  - flake8=3.8.3
+  - torchvision=0.6.0
+  - matplotlib
+  - jupyter
+  - flake8
   - biopython=1.77
   - rdkit=2019.09.3
   - openbabel
   - aria2
   - scikit-learn=0.23.1
-  - flask=1.1.2
-  - pip=20.1.1
+  - flask
+  - pip
   - pip:
       - pytorch-lightning==0.8.5
-      - torch-cluster==1.5.4
       - test-tube==0.7.5
       - black
