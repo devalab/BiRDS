@@ -3,12 +3,16 @@ import sys
 from shutil import rmtree
 from string import ascii_lowercase
 from subprocess import PIPE, run
-from utils import fix_a3m
 
 import numpy as np
 
-sys.path.insert(0, os.path.abspath("./hhsuite2/scripts"))
-from hhsuite2.scripts.build_MSA import (
+from .utils import fix_a3m
+
+cfd = os.path.dirname(os.path.abspath(__file__))
+tmpdir = os.path.join(cfd, "tmp")
+
+sys.path.insert(0, os.path.join(cfd, "hhsuite2/scripts"))
+from .hhsuite2.scripts.build_MSA import (
     build_MSA,
     check_db,
     make_tmpdir,
@@ -25,14 +29,18 @@ db_dict = dict(hmmsearchdb="",)
 outdir = "."
 overwrite = 0
 
-db_dict["hhblitsdb"] = os.path.abspath("./data/uniclust30_2017_10/uniclust30_2017_10")
-db_dict["jackhmmerdb"] = os.path.abspath("./data/uniref50.fasta")
-
-raw_dir = os.path.abspath("data/prep")
-splits_dir = os.path.abspath("splits")
-cmd1 = "./bin/esl-weight -p --amino --informat a2m -o weighted "
-cmd2 = "./bin/esl-alistat --weight --amino --icinfo icinfo --cinfo cinfo weighted"
-cmd3 = "rm weighted icinfo cinfo"
+cmd1 = os.path.join(cfd, "bin/esl-weight") + " -p --amino --informat a2m -o weighted "
+icinfo = os.path.join(tmpdir, "icinfo")
+cinfo = os.path.join(tmpdir, "cinfo")
+cmd2 = (
+    os.path.join(cfd, "bin/esl-alistat")
+    + " --weight --amino --icinfo "
+    + icinfo
+    + " --cinfo "
+    + cinfo
+    + " weighted"
+)
+cmd3 = "rm weighted " + icinfo + " " + cinfo
 
 
 def save_pssm(pis, chain, cnt=0):
@@ -54,8 +62,8 @@ def save_pssm(pis, chain, cnt=0):
     if flg:
         print(pre + " " + chain + " Unable to get weighted info")
         return
-    i_icinfo = open("icinfo", "r")
-    i_cinfo = open("cinfo", "r")
+    i_icinfo = open(icinfo, "r")
+    i_cinfo = open(cinfo, "r")
     evos = []
     for buf_icinfo in range(9):
         buf_icinfo = i_icinfo.readline()
@@ -109,7 +117,7 @@ def make_a3m(pis, chain):
         f.writelines(new_a3m_lines)
 
 
-def generate_msa(pis, chain, tmpdir):
+def generate_msa(pis, chain, ncpu=24):
     pre = os.path.join(raw_dir, pis)
 
     if os.path.exists(os.path.join(pre, chain + ".aln")):
@@ -122,14 +130,14 @@ def generate_msa(pis, chain, tmpdir):
     # check input format #
     query_fasta = os.path.abspath(chain_fasta)
     sequence = read_one_sequence(query_fasta)
-    tmpdir = make_tmpdir(tmpdir)
+    tmpdir_loc = make_tmpdir(os.path.join(tmpdir, pis + "_" + chain))
     prefix = os.path.splitext(query_fasta)[0]
 
     # start building MSA #
     nf = build_MSA(
         prefix,
         sequence,
-        tmpdir,
+        tmpdir_loc,
         db_dict,
         ncpu=ncpu,
         overwrite_dict=parse_overwrite_option(overwrite),
@@ -139,24 +147,28 @@ def generate_msa(pis, chain, tmpdir):
     # this will not improve contact accuracy. it is solely for making the
     # MSA not too large so that it is manageable for contact prediction
     if nf >= target_nf[-1]:
-        nf = refilter_aln(prefix, tmpdir)
+        nf = refilter_aln(prefix, tmpdir_loc)
 
     # clean up #
-    if os.path.isdir(tmpdir):
-        rmtree(tmpdir)
+    if os.path.isdir(tmpdir_loc):
+        rmtree(tmpdir_loc)
 
 
-if __name__ == "__main__":
-    ncpu = 24
-    if sys.argv[2].startswith("-ncpu="):
-        ncpu = int(sys.argv[2][len("-ncpu=") :])
-
+def generate_msas_from_file(dataset_dir, file, ncpu=24):
+    data_dir = os.path.dirname(dataset_dir)
+    db_dict["hhblitsdb"] = os.path.join(
+        data_dir, "uniclust30_2017_10/uniclust30_2017_10"
+    )
+    db_dict["jackhmmerdb"] = os.path.join(data_dir, "uniref50.fasta")
     check_db(db_dict)
-    tmpdir = os.path.abspath("../tmp/" + sys.argv[1])
+
+    global raw_dir
+    raw_dir = os.path.join(dataset_dir, "raw")
+    splits_dir = os.path.join(dataset_dir, "splits")
 
     # File should have 1 chain per line of the format
     # 1ABC/D*
-    with open(os.path.join(splits_dir, sys.argv[1]), "r") as f:
+    with open(os.path.join(splits_dir, file), "r") as f:
         lines = f.readlines()
 
     for file in lines:
@@ -167,7 +179,7 @@ if __name__ == "__main__":
         # Generates .aln, .jaca3m, .hhba3m, .jacaln, .hhbaln files
         print(wide + " GENERATING MSA " + wide)
         print(pis + "/" + chain)
-        generate_msa(pis, chain, tmpdir)
+        generate_msa(pis, chain, ncpu)
         print(pis + "/" + chain)
         print(wide + " GENERATED MSA " + wide)
 
@@ -186,3 +198,13 @@ if __name__ == "__main__":
         save_pssm(pis, chain)
         print(pis + "/" + chain)
         print(wide + " GENERATED PSSM " + wide)
+
+
+if __name__ == "__main__":
+    ncpu = 24
+    if sys.argv[2].startswith("-ncpu="):
+        ncpu = int(sys.argv[2][len("-ncpu=") :])
+    data_dir = os.path.join(cfd, "../data")
+    dataset_dir = os.path.join(data_dir, "scPDB")
+
+    generate_msas_from_file(data_dir, dataset_dir, os.path.abspath(sys.argv[1]), ncpu)

@@ -14,12 +14,15 @@ AA_DICT = defaultdict(lambda: 0, {aa: idx for idx, aa in enumerate(AMINO_ACIDS)}
 
 
 class scPDB(Dataset):
-    def __init__(self, hparams, test=False):
+    def __init__(self, hparams, test=False, predict=False):
         super().__init__()
         self.hparams = hparams
         self.test = test
+        self.predict = predict
         if test:
             self.dataset_dir = os.path.join(hparams.data_dir, "2018_scPDB")
+        elif predict:
+            self.dataset_dir = os.path.join(hparams.data_dir, "predict")
         else:
             self.dataset_dir = os.path.join(hparams.data_dir, "scPDB")
             self.splits_dir = os.path.join(self.dataset_dir, "splits")
@@ -112,6 +115,8 @@ class scPDB(Dataset):
         mapping = {}
         if self.test:
             print("Loading", name, "of test set")
+        elif self.predict:
+            print("Loading", name, "of predict set")
         else:
             print("Loading", name, "of train set")
         tmp = glob(os.path.join(self.preprocessed_dir, "*", name + "_?.npy"))

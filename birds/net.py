@@ -32,13 +32,22 @@ class Net(pl.LightningModule):
             self.pin_memory = True
         else:
             self.pin_memory = False
-        self.train_ds = scPDB(hparams)
+        input_size = None
+        if hparams.load_train_ds:
+            self.train_ds = scPDB(hparams)
+            input_size = self.train_ds.input_size
         if hparams.run_tests:
             self.test_ds = scPDB(hparams, test=True)
+            input_size = self.test_ds.input_size
+        if hparams.predict:
+            self.predict_ds = scPDB(hparams, predict=True)
+            input_size = self.predict_ds.input_size
+        if not input_size:
+            input_size = hparams.input_size
 
         self.model_class = ResNet
-        self.embedding_model = self.model_class(self.train_ds.input_size, hparams)
-        dummy = torch.ones((1, self.train_ds.input_size, 10))
+        self.embedding_model = self.model_class(input_size, hparams)
+        dummy = torch.ones((1, input_size, 10))
         self.embedding_dim = self.embedding_model(dummy, dummy.shape[2]).shape[1]
 
         self.detector = Detector(self.embedding_dim, hparams)
@@ -73,7 +82,7 @@ class Net(pl.LightningModule):
             Subset(self.train_ds, self.train_ds.train_indices),
             # self.train_ds,
             batch_size=self.hparams.batch_size,
-            collate_fn=self.train_ds.collate_fn,
+            collate_fn=scPDB.collate_fn,
             num_workers=self.num_cpus,
             pin_memory=self.pin_memory,
             shuffle=True,
@@ -84,7 +93,7 @@ class Net(pl.LightningModule):
             Subset(self.train_ds, self.train_ds.valid_indices),
             # self.test_ds,
             batch_size=self.hparams.batch_size,
-            collate_fn=self.train_ds.collate_fn,
+            collate_fn=scPDB.collate_fn,
             num_workers=self.num_cpus,
             pin_memory=self.pin_memory,
             shuffle=False,
@@ -94,7 +103,7 @@ class Net(pl.LightningModule):
         return DataLoader(
             self.test_ds,
             batch_size=self.hparams.batch_size,
-            collate_fn=self.train_ds.collate_fn,
+            collate_fn=scPDB.collate_fn,
             num_workers=self.num_cpus,
             pin_memory=self.pin_memory,
             shuffle=False,
@@ -221,4 +230,18 @@ class Net(pl.LightningModule):
             choices=["bce", "focal"],
             help="Loss function to use. Default: %(default)s",
         )
+        parser.add_argument(
+            "--no-train-ds",
+            dest="load_train_ds",
+            action="store_false",
+            help="Use this during evaluation mode to not load the train dataset. Default: %(default)s",
+        )
+        parser.set_defaults(load_train_ds=True)
+        parser.add_argument(
+            "--predict",
+            dest="predict",
+            action="store_true",
+            help="Run predictions. Default: %(default)s",
+        )
+        parser.set_defaults(predict=False)
         return parser

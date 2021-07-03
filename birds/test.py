@@ -108,20 +108,28 @@ def get_best_ckpt(folder):
 
 def load_nets_frozen(hparams):
     nets = []
+    test = False
+    if not hasattr(hparams, "predict"):
+        hparams.predict = False
     for i in range(10):
         print("Loading model for fold " + str(i))
         ckpt = get_best_ckpt(
             os.path.join(hparams.ckpt_dir, "fold_" + str(i), "checkpoints")
         )
         if i == 0:
-            test = True
+            if not hparams.predict:
+                test = True
         else:
             test = False
+            hparams.predict = False
         net = Net.load_from_checkpoint(
             ckpt,
             data_dir=hparams.data_dir,
             gpus=hparams.gpus,
             run_tests=(not hparams.validate and test),
+            load_train_ds=hparams.validate,
+            predict=hparams.predict,
+            input_size=47,
         )
         if hparams.gpus != 0:
             net = net.cuda()

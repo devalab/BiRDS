@@ -4,11 +4,9 @@ from datetime import datetime
 from multiprocessing import Pool
 from subprocess import PIPE, run
 
-data_dir = os.path.abspath("./data")
-raw_dir = os.path.join(data_dir, "msa")
-hhlib = os.path.abspath("./hhsuite2")
+cfd = os.path.dirname(os.path.abspath(__file__))
+hhlib = os.path.join(cfd, "hhsuite2")
 os.environ["HHLIB"] = hhlib
-splits_dir = os.path.abspath("./splits")
 aaprob = os.path.join(hhlib, "bin", "AlnAaProb")
 a3m2mtx = os.path.join(hhlib, "scripts", "a3m2mtx.pl")
 psipred = os.path.join(hhlib, "scripts", "hhb_psipred.pl")
@@ -69,14 +67,17 @@ def task(file):
     return log
 
 
-def main(args):
-    with open(os.path.join(splits_dir, args.file), "r") as f:
+def extract_features_from_file(dataset_dir, file, ncpu):
+    global raw_dir
+    raw_dir = os.path.join(dataset_dir, "raw")
+
+    with open(file, "r") as f:
         lines = f.readlines()
 
-    with Pool(args.ncpu) as pool:
+    with Pool(ncpu) as pool:
         for i, result in enumerate(pool.imap_unordered(task, lines)):
             print(result)
-            print(i, "PISC DONE")
+            print(i + 1, "PISC DONE")
 
 
 if __name__ == "__main__":
@@ -89,7 +90,12 @@ if __name__ == "__main__":
         type=str,
         help="A file containing list of <pdb_id>/<chain_id>* lines for which to generate MSAs",
     )
+    parser.add_argument(
+        "--dataset-dir", default="../data/scPDB", type=str, help="Dataset directory",
+    )
     parser.add_argument("-c", "--ncpu", default=1, type=int)
     args = parser.parse_args()
     print(args)
-    main(args)
+    extract_features_from_file(
+        args.dataset_dir, os.path.join(args.dataset_dir, "splits", args.file), args.ncpu
+    )
