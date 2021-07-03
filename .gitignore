@@ -38,6 +38,7 @@ venv.bak/
 /data/**
 !/data/AA_properties.csv
 !/data/obseleted.txt
+!/data/predict/raw/abde_1/sequence.fasta
 data.zip
 model.tar.zst
 

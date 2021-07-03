@@ -13,8 +13,6 @@ python -m pip install -e .
 
 ## Required files
 
-### Training/Testing
-
 Download the following files into the root folder of the project
 
 - The files required by the model can be downloaded from [primary](https://iiitaphyd-my.sharepoint.com/:u:/g/personal/ravindrachelur_v_research_iiit_ac_in/EV4k56vFnuxArB81zNIFfzgBU9t15ajDwrfQrBW7RNiT7A?e=m6NRfJ), [backup](https://www.dropbox.com/s/cd9h2qtaphtvx6w/data.zip)
@@ -36,7 +34,27 @@ cd -
 tar -I zstd -xvf model.tar.zst
 ```
 
-### Predictions
+## Training
+
+```bash
+# View all the supported options for training
+python train.py --help
+
+# Train the default model (with parameters) used in the paper for fold 0 
+python train.py --fold 0
+```
+
+## Testing
+
+```bash
+# Test the models
+python test.py
+
+# Run the models on their validation sets
+python test.py --validate
+```
+
+## Predicting
 
 uniref50.fasta and uniclust30_2017_10_hhsuite are needed for the generation of MSAs
 
@@ -48,34 +66,24 @@ tar xvzf ./data/uniclust30_2017_10_hhsuite.tar.gz -C ./data/
 ./msa_generator/hhsuite2/bin/esl-sfetch --index ./data/uniref50.fasta
 ```
 
-## Training
-
-To train a model for a particular fold, simply run
+For predictions, the following format has to be followed. Generate a random 4 alphanumeric character PDB code, 1 character structure number for your protein sequence. Let's assume that the PDB code is abde and the structure number is 1. Then the directory and sequence file need to be created as follows
 
 ```bash
-python train.py
+mkdir -p ./data/predict/raw/abde_1/
+touch ./data/predict/raw/abde_1/sequence.fasta
 ```
 
-To view all the supported options for training
+In sequence.fasta, put the sequence in the format shown below
+
+```fasta
+>ABDE:A|PDBID|CHAIN|SEQUENCE
+NSELDRLSKDDRNWVMQTKDYSATHFSRLTEINSHNVKNLKVAWTLSTGTLHGHEGAPLVVDGIMYIHTPFPNNVYAVDLNDTRKMLWQYKPKQNPAARAVACCDVVNRGLAYVPAGEHGPAKIFLNQLDGHIVALNAKTGEEIWKMENSDIAMGSTLTGAPFVVKDKVLVGSAGAELGVRGYVTAYNIKDGKQEWRAYATGPDEDLLLDKDFNKDNPHYGQFGLGLSTWEGDAWKIGGGTNWGWYAYDPKLDMIYYGSGNPAPWNETMRPGDNKWTMTIWGRDADTGRAKFGYQKTPHDEWDYAGVNYMGLSEQEVDGKLTPLLTHPDRNGLVYTLNRETGALVNAFKIDDTVNWVKKVDLKTGLPIRDPEYSTRMDHNAKGICPSAMGYHNQGIESYDPDKKLFFMGVNHICMDWEPFMLPYRAGQFFVGATLNMYPGPKGMLGQVKAMNAVTGKMEWEVPEKFAVWGGTLATAGDLVFYGTLDGFIKARDTRTGELKWQFQLPSGVIGHPITYQHNGKQYIAIYSGVGGWPGVGLVFDLKDPTAGLGAVGAFRELAHYTQMGGSVFVFSL
+>ABDE:B|PDBID|CHAIN|SEQUENCE
+YDGTHCKAPGNCWEPKPGYPDKVAGSKYDPKHDPNELNKQAESIKAMEARNQKRVENYAKTGKFVYKVEDIK
+```
+
+Please note that the predictions will take time since they are dependent on the generation of MSAs. There is verbose logging and some speed up optimizations. In case it is taking too long. Please follow the instructions in msa_generator for generating MSAs for a lot of sequences
 
 ```bash
-python train.py --help
+python predict.py
 ```
-
-## Testing
-
-To test the models
-
-```bash
-python test.py
-```
-
-To run on the validation sets
-
-```bash
-python test.py --validate
-```
-
-## Predicting
-
-For predictions, the following files are required
