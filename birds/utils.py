@@ -127,7 +127,6 @@ def store_features_as_numpy(dataset_dir, file):
 
 def create_info_file(dataset_dir):
     raw_dir = os.path.join(dataset_dir, "raw")
-    sequences = defaultdict(list)
     lines = []
     for pis in sorted(os.listdir(raw_dir)):
         pre = os.path.join(raw_dir, pis.strip())
@@ -138,4 +137,13 @@ def create_info_file(dataset_dir):
             with open(os.path.join(pre, fasta)) as f:
                 f.readline()
                 sequence = f.readline().strip()
-            # lines.append()
+            lines.append(pis.split("_") + [chain_id, sequence, "0" * len(sequence)])
+    lines = ["\t".join(line) + "\n" for line in lines]
+
+    with open(os.path.join(dataset_dir, "info.txt"), "w") as f:
+        f.write(
+            "\t".join(
+                ["pdb_id", "structure", "chain", "sequence", "binding_residues\n"]
+            )
+        )
+        f.writelines(lines)

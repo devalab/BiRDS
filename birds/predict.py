@@ -1,7 +1,8 @@
 import os
 import re
 from argparse import ArgumentParser
-from test import load_nets_frozen
+from shutil import copyfile
+from test import *
 
 from msa_generator.extract_features import extract_features_from_file
 from msa_generator.generate_msa import generate_msas_from_file
@@ -31,10 +32,44 @@ def main(hparams):
     extract_features_from_file(hparams.dataset_dir, unique, hparams.cpus)
     store_features_as_numpy(hparams.dataset_dir, unique)
     create_info_file(hparams.dataset_dir)
+    copyfile(unique, os.path.join(hparams.dataset_dir, "unique"))
+
     hparams.data_dir = os.path.dirname(hparams.dataset_dir)
     hparams.predict = True
     nets = load_nets_frozen(hparams)
 
+    print("Running models on the predict set")
+    test_dl = nets[0].test_dataloader()
+    device = nets[0].device
+    predictions = []
+    for idx, batch in tqdm(enumerate(test_dl)):
+        data, meta = move_data_to_device(batch, device)
+        y_pred = predict(nets, data, meta).cpu().numpy()
+        batch_size = len(meta["length"])
+        for i in range(batch_size):
+            piscs = meta["pisc"][i]
+            sequences = meta["sequence"][i]
+            cumulative = 0
+            for j in range(len(piscs)):
+                label = "".join(
+                    [
+                        "1" if el else "0"
+                        for el in y_pred[i][cumulative : cumulative + len(sequences[j])]
+                    ]
+                )
+                cumulative += len(sequences[j])
+                predictions.append([piscs[j], sequences[j], label])
+            predictions.append([])
+    # predictions = ["\t".join(line) + "\n" for line in predictions]
+    predictions_file = os.path.join(hparams.dataset_dir, "predictions.txt")
+    with open(predictions_file, "w") as f:
+        for prediction in predictions:
+            if prediction == []:
+                f.write("\n")
+                continue
+            for el in prediction:
+                f.write(el + "\n")
+    print("Predictions written to", predictions_file)
 
 
 def parse_arguments():

@@ -7,8 +7,8 @@ Run the following commands in the root folder of the project after cloning it
 
 ```bash
 conda env create -f environment.yml
-python -m pip install -e .
 conda activate birds
+python -m pip install -e .
 ```
 
 ## Required files

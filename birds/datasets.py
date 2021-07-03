@@ -67,7 +67,7 @@ class scPDB(Dataset):
                     self.pisc_to_mpisc[pisc[:-1]] = mpisc
 
         # Dataset pdbID to index mapping
-        if test:
+        if test or predict:
             self.dataset = sorted(list(self.pi_to_pis.keys()))
         else:
             self.train_fold, self.valid_fold = self.get_fold()
@@ -75,7 +75,7 @@ class scPDB(Dataset):
 
         self.pi_to_index = {pi: idx for idx, pi in enumerate(self.dataset)}
 
-        if not test:
+        if not (test or predict):
             if hparams.pos_weight:
                 print("Using provided positional weighting")
                 self.pos_weight = [hparams.pos_weight]
@@ -194,7 +194,7 @@ class scPDB(Dataset):
 
             _data["feature"] = np.vstack(inputs).astype(np.float32)
             _data["label"] = self.labels[pisc].astype(np.float32)
-            if self.test or index in self.valid_indices:
+            if not self.predict and (self.test or index in self.valid_indices):
                 _data["coords"] = self.get_coords(pisc).astype(np.float32)
 
             if i == 0:

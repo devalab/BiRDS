@@ -40,8 +40,8 @@ class Net(pl.LightningModule):
             self.test_ds = scPDB(hparams, test=True)
             input_size = self.test_ds.input_size
         if hparams.predict:
-            self.predict_ds = scPDB(hparams, predict=True)
-            input_size = self.predict_ds.input_size
+            self.test_ds = scPDB(hparams, predict=True)
+            input_size = self.test_ds.input_size
         if not input_size:
             input_size = hparams.input_size
 

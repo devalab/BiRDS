@@ -142,6 +142,7 @@ def load_nets_frozen(hparams):
 
 def print_metrics(cm):
     print("-------------------------")
+    print("CM: ", {key: cm[key].long().item() for key in cm})
     print("IOU: ", IOU(cm).item())
     print("MCC: ", MCC(cm).item())
     print("ACCURACY: ", ACCURACY(cm).item())
