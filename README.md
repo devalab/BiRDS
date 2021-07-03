@@ -17,7 +17,7 @@ Download the following files into the root folder of the project
 
 - The files required by the model can be downloaded from [primary](https://iiitaphyd-my.sharepoint.com/:u:/g/personal/ravindrachelur_v_research_iiit_ac_in/EV4k56vFnuxArB81zNIFfzgBU9t15ajDwrfQrBW7RNiT7A?e=m6NRfJ), [backup](https://www.dropbox.com/s/cd9h2qtaphtvx6w/data.zip)
 
-- The models that were trained and used in the paper can be downloaded from [primary](https://iiitaphyd-my.sharepoint.com/:u:/g/personal/ravindrachelur_v_research_iiit_ac_in/EZgET08RIBhFl3ut2YoM4x8BMPr0wz-LYj7IB8IHsZM40w?e=97FU59), [backup](https://www.dropbox.com/s/1sfcam7tsggx4wm/models.tar.zst)
+- The models that were trained and used in the paper can be downloaded from [primary](https://iiitaphyd-my.sharepoint.com/:u:/g/personal/ravindrachelur_v_research_iiit_ac_in/EZgET08RIBhFl3ut2YoM4x8BMPr0wz-LYj7IB8IHsZM40w?e=cp9TmS), [backup](https://www.dropbox.com/s/1sfcam7tsggx4wm/model.tar.zst)
 
 Run the following commands in the root folder of the project.
 
