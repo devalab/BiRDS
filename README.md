@@ -47,6 +47,14 @@ python test.py
 python test.py --validate
 ```
 
+To visualize the results on the test set
+
+```bash
+python install.py --visualize
+cd birds/visualize
+python visualize.py
+```
+
 ## Predicting
 
 uniref50.fasta and uniclust30_2017_10_hhsuite are needed for the generation of MSAs
@@ -76,14 +84,4 @@ Please note that the predictions will take time since they are dependent on the 
 ```bash
 cd birds
 python predict.py
-```
-
-## Visualize
-
-To visualize the results on the test set
-
-```bash
-python install.py --visualize
-cd birds/visualize
-python visualize.py
 ```
