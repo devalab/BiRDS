@@ -106,7 +106,7 @@ def get_best_ckpt(folder):
     return os.path.join(folder, "-".join(tmp[0]) + ".ckpt")
 
 
-def load_nets_frozen(hparams):
+def load_nets_frozen(hparams, validate_one=False):
     nets = []
     test = False
     if not hasattr(hparams, "predict"):
@@ -120,6 +120,8 @@ def load_nets_frozen(hparams):
             if not hparams.predict:
                 test = True
         else:
+            if validate_one:
+                hparams.validate = False
             test = False
             hparams.predict = False
         net = Net.load_from_checkpoint(

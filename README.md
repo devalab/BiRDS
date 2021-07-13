@@ -28,6 +28,7 @@ In case the downloads are not successful, please download the following files to
 ## Training
 
 ```bash
+cd birds
 # View all the supported options for training
 python train.py --help
 
@@ -38,6 +39,7 @@ python train.py --fold 0
 ## Testing
 
 ```bash
+cd birds
 # Test the models
 python test.py
 
@@ -72,5 +74,16 @@ YDGTHCKAPGNCWEPKPGYPDKVAGSKYDPKHDPNELNKQAESIKAMEARNQKRVENYAKTGKFVYKVEDIK
 Please note that the predictions will take time since they are dependent on the generation of MSAs. There is verbose logging and some speed up optimizations. In case it is taking too long. Please follow the instructions in msa_generator for generating MSAs for a lot of sequences
 
 ```bash
+cd birds
 python predict.py
+```
+
+## Visualize
+
+To visualize the results on the test set
+
+```bash
+python install.py --visualize
+cd birds/visualize
+python visualize.py
 ```

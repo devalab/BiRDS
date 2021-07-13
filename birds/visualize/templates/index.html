@@ -5,22 +5,17 @@
     <title>Binding Site Predictions</title>
     <meta charset="utf-8">
     <style>
-        #leftbox {
-            float: left;
-            width: 50%;
-            margin: auto;
-        }
-
-        #rightbox {
-            float: right;
-            width: 50%;
+        #box {
+            float: centre;
+            width: 100%;
             margin: auto;
         }
     </style>
 </head>
 
 <body>
-    <div id="leftbox">
+    {% if validation != {} %}
+    <div id="box">
         <h1><u>Validation Set</u></h1>
         <table style="width:100%">
             <tr>
@@ -45,7 +40,10 @@
             {% endfor %}
         </table>
     </div>
-    <div id="rightbox">
+    {% endif %}
+
+    {% if test != {} %}
+    <div id="box">
         <h1><u>Test Set</u></h1>
         <table style="width:100%">
             <tr>
@@ -70,6 +68,7 @@
             {% endfor %}
         </table>
     </div>
+    {% endif %}
 </body>
 
 </html>
