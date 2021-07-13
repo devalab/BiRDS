@@ -29,8 +29,6 @@
                 <th>ACC</th>
                 <th>IOU</th>
                 <th>DCC</th>
-                <th>FPS</th>
-                <th>GRID</th>
                 <th>PRECISION</th>
                 <th>RECALL</th>
             </tr>
@@ -41,8 +39,6 @@
                 <td>{{ "%0.2f" % validation[pis]["metrics"]["acc"]|float }}</td>
                 <td>{{ "%0.2f" % validation[pis]["metrics"]["iou"]|float }}</td>
                 <td>{{ "%0.2f" % validation[pis]["metrics"]["f_dcc"]|float }}</td>
-                <td>{{ "%0.2f" % validation[pis]["metrics"]["fps"]|float }}</td>
-                <td>{{ "%0.2f" % validation[pis]["metrics"]["grid"]|float }}</td>
                 <td>{{ "%0.2f" % validation[pis]["metrics"]["precision"]|float }}</td>
                 <td>{{ "%0.2f" % validation[pis]["metrics"]["recall"]|float }}</td>
             </tr>
@@ -58,8 +54,6 @@
                 <th>ACC</th>
                 <th>IOU</th>
                 <th>DCC</th>
-                <th>FPS</th>
-                <th>GRID</th>
                 <th>PRECISION</th>
                 <th>RECALL</th>
             </tr>
@@ -70,8 +64,6 @@
                 <td>{{ "%0.2f" % test[pis]["metrics"]["acc"]|float }}</td>
                 <td>{{ "%0.2f" % test[pis]["metrics"]["iou"]|float }}</td>
                 <td>{{ "%0.2f" % test[pis]["metrics"]["f_dcc"]|float }}</td>
-                <td>{{ "%0.2f" % test[pis]["metrics"]["fps"]|float }}</td>
-                <td>{{ "%0.2f" % test[pis]["metrics"]["grid"]|float }}</td>
                 <td>{{ "%0.2f" % test[pis]["metrics"]["precision"]|float }}</td>
                 <td>{{ "%0.2f" % test[pis]["metrics"]["recall"]|float }}</td>
             </tr>

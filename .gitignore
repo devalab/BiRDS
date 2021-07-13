@@ -48,14 +48,14 @@ model
 # preprocessing/*.ipynb
 
 # Manuscript
-manuscript/acs-bindingsite_seq.bib
-manuscript/bindingsite_seq.aux
-manuscript/bindingsite_seq.bbl
-manuscript/bindingsite_seq.blg
-manuscript/bindingsite_seq.fdb_latexmk
-manuscript/bindingsite_seq.fls
-manuscript/bindingsite_seq.out
-manuscript/bindingsite_seq.log
-manuscript/bindingsite_seq.synctex.gz
+manuscript/acs-achemso-demo.bib
+manuscript/achemso-demo.aux
+manuscript/achemso-demo.bbl
+manuscript/achemso-demo.blg
+manuscript/achemso-demo.fdb_latexmk
+manuscript/achemso-demo.fls
+manuscript/achemso-demo.out
+manuscript/achemso-demo.log
+manuscript/achemso-demo.synctex.gz
 
 manuscript/supplementary.synctex.gz

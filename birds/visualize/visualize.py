@@ -3,22 +3,10 @@ from argparse import ArgumentParser
 from shutil import copyfile
 
 import torch
+from birds.metrics import batch_metrics, batch_work
+from birds.test import load_nets_frozen
 from flask import Flask, render_template
 from tqdm.auto import tqdm
-
-
-def get_best_ckpt(folder):
-    tmp = [el[:-5].split("-") for el in sorted(os.listdir(folder))]
-    tmp = sorted(
-        tmp,
-        key=lambda x: (
-            float(x[1].split("=")[1]),
-            float(x[2].split("=")[1]),
-            float(x[3].split("=")[1]),
-        ),
-        reverse=True,
-    )
-    return os.path.join(folder, "-".join(tmp[0]) + ".ckpt")
 
 
 def get_pred_metrics(nets, dataset):
@@ -32,9 +20,9 @@ def get_pred_metrics(nets, dataset):
         pi = dataset.dataset[ind]
         pis = dataset.pi_to_pis[pi][0]
         data, meta = dataset[ind]
-        meta["length"] = torch.tensor([len(data["label"])], device=device)
+        meta["length"] = torch.tensor([len(data["label"])], device=hparams.device)
         for key in data:
-            data[key] = torch.tensor([data[key]], device=device)
+            data[key] = torch.tensor([data[key]], device=hparams.device)
         y_preds = []
         for i, net in enumerate(nets):
             y_pred, y_true = batch_work(
@@ -62,54 +50,66 @@ def get_pred_metrics(nets, dataset):
     return out
 
 
-parser = ArgumentParser(description="Binding Site Predictor", add_help=True)
-parser.add_argument(
-    "--ckpt-dir",
-    default="~/logs/cv_0",
-    type=str,
-    help="Checkpoint file for loading model",
-)
-parser.add_argument(
-    "--data-dir",
-    default="../../data",
-    type=str,
-    help="Location of data directory. Default: %(default)s",
-)
-parser.add_argument("--debug", action="store_true")
-parser.set_defaults(debug=False)
-args = parser.parse_args()
-data_dir = os.path.abspath(os.path.expanduser(args.data_dir))
-ckpt_dir = os.path.abspath(os.path.expanduser(args.ckpt_dir))
-if not args.debug:
-    from birds.metrics import batch_metrics, batch_work
-    from birds.net import Net
+def parse_arguments():
+    parser = ArgumentParser(description="Binding Site Predictor", add_help=True)
+    parser.add_argument(
+        "--ckpt_dir",
+        default="../../model",
+        type=str,
+        help="Checkpoint directory containing checkpoints of all 10 folds. Default: %(default)s",
+    )
+    parser.add_argument(
+        "--data-dir",
+        default="../../data",
+        type=str,
+        help="Location of data directory. Default: %(default)s",
+    )
+    parser.add_argument(
+        "--gpus",
+        default=1,
+        type=int,
+        help="Number of gpus to use for computation. Default: %(default)d",
+    )
+    parser.add_argument(
+        "--validate",
+        dest="validate",
+        action="store_true",
+        help="Run the models on their validation sets. Default: %(default)s",
+    )
+    parser.set_defaults(validate=False)
+    parser.add_argument("--debug", action="store_true")
+    parser.set_defaults(debug=False)
+    hparams = parser.parse_args()
+    hparams.data_dir = os.path.abspath(os.path.expanduser(hparams.data_dir))
+    hparams.ckpt_dir = os.path.abspath(os.path.expanduser(hparams.ckpt_dir))
+    return hparams
 
-    nets = []
-    metrics = []
-    for i in range(10):
-        ckpt = get_best_ckpt(os.path.join(ckpt_dir, "fold_" + str(i), "checkpoints"))
-        print(ckpt)
-        nets.append(Net.load_from_checkpoint(ckpt).cuda())
-        device = nets[i].device
-        nets[i].freeze()
-        nets[i].eval()
-        # break
-    validation = get_pred_metrics([nets[0]], nets[0].train_ds)
-    test = get_pred_metrics(nets, nets[0].test_ds)
+
+hparams = parse_arguments()
+hparams.debug = False
+validation = {}
+test = {}
+if not hparams.debug:
+    nets = load_nets_frozen(hparams)
+    hparams.device = nets[0].device
+    if hparams.validate:
+        validation = get_pred_metrics([nets[0]], nets[0].train_ds)
+    else:
+        test = get_pred_metrics(nets, nets[0].test_ds)
 
 app = Flask(__name__, static_url_path="")
 
 
 @app.route("/")
 def main():
-    if args.debug:
+    if hparams.debug:
         return render_template("index.html", validation={}, test={})
     return render_template("index.html", validation=validation, test=test)
 
 
 @app.route("/<pis>")
 def show(pis):
-    if args.debug:
+    if hparams.debug:
         return render_template(
             "show.html",
             protein="debug/protein.pdb",
@@ -121,10 +121,10 @@ def show(pis):
     if not os.path.exists("./static/" + sv):
         os.makedirs("./static/" + sv)
     if pis in test:
-        pre = os.path.join(data_dir, "2018_scPDB", "raw", pis)
+        pre = os.path.join(hparams.data_dir, "2018_scPDB", "raw", pis)
         hlp = test[pis]
     else:
-        pre = os.path.join(data_dir, "scPDB", "raw", pis)
+        pre = os.path.join(hparams.data_dir, "scPDB", "raw", pis)
         hlp = validation[pis]
     protein = sv + "protein.pdb"
     ligand = sv + "ligand.mol2"

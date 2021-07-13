@@ -23,5 +23,6 @@ dependencies:
   - pip
   - pip:
       - pytorch-lightning==0.8.5
+      - xtarfile
       - test-tube==0.7.5
       - black
