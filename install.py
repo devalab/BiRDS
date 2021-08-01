@@ -1,8 +1,11 @@
-from zipfile import ZipFile
-import xtarfile
-from argparse import ArgumentParser
 import os
+from argparse import ArgumentParser
 from glob import glob
+from zipfile import ZipFile
+
+import requests
+import sys
+import xtarfile
 
 
 def decompress_file(file, ext):
@@ -19,13 +22,31 @@ def decompress_dataset_files(dataset_dir):
     print()
 
 
-def run_aria(save_dir, link):
-    os.system("aria2c -c -x 8 -s 8 -d " + save_dir + " " + link)
+def download_file(dir, url):
+    filename = url.split("/")[-1].split("?")[0]
+    filepath = os.path.join(dir, filename)
+    if not os.path.exists(filepath):
+        print("Downloading", filename)
+        with open(filepath, "wb") as f:
+            response = requests.get(url, stream=True)
+            total_length = response.headers.get("content-length")
+            if total_length is None:
+                f.write(response.content)
+            else:
+                dl = 0
+                total_length = int(total_length)
+                for data in response.iter_content(chunk_size=4096):
+                    dl += len(data)
+                    f.write(data)
+                    done = int(50 * dl / total_length)
+                    sys.stdout.write("\r[%s%s]" % ("=" * done, " " * (50 - done)))
+                    sys.stdout.flush()
+    return filepath
 
 
 def download_extract_data(hparams):
     # Download required data and extract
-    run_aria(
+    download_file(
         hparams.project_dir, "https://www.dropbox.com/s/cd9h2qtaphtvx6w/data.zip?dl=1"
     )
 
@@ -38,7 +59,7 @@ def download_extract_data(hparams):
 
 
 def download_extract_model(hparams):
-    run_aria(
+    download_file(
         hparams.project_dir,
         "https://www.dropbox.com/s/1sfcam7tsggx4wm/model.tar.zst?dl=1",
     )
@@ -46,13 +67,13 @@ def download_extract_model(hparams):
 
 
 def download_extract_prediction_files(hparams):
-    run_aria(
+    download_file(
         hparams.data_dir,
         "ftp://ftp.uniprot.org/pub/databases/uniprot/uniref/uniref50/uniref50.fasta.gz",
     )
     decompress_file(os.path.join(hparams.data_dir, "uniref50.fasta.gz"), "gz")
 
-    run_aria(
+    download_file(
         hparams.data_dir,
         "http://wwwuser.gwdg.de/~compbiol/uniclust/2017_10/uniclust30_2017_10_hhsuite.tar.gz",
     )
@@ -63,7 +84,7 @@ def download_extract_prediction_files(hparams):
 
 def download_extract_visualization_files(hparams):
     test_dir = os.path.join(hparams.data_dir, "2018_scPDB")
-    run_aria(
+    download_file(
         test_dir,
         "https://www.dropbox.com/s/b0qoes4bjdnh9m3/sc6k_visualize.tar.zst?dl=1",
     )

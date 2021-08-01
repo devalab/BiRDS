@@ -1,8 +1,9 @@
 \documentclass[journal=jcisd8,manuscript=article]{achemso}
 
 \usepackage[T1]{fontenc}
-\usepackage{hyperref}
+\usepackage[breaklinks]{hyperref}
 \usepackage{graphicx}
+\usepackage{xcite}
 
 \graphicspath{ {./resources/} }
 \usepackage{array}
@@ -33,7 +34,7 @@
 
 \begin{tocentry}
     \centering
-    \includegraphics[width=\textwidth,height=0.15\textheight]{graphical_toc2}
+    \includegraphics[width=\textwidth,height=0.15\textheight]{graphical_toc}
 \end{tocentry}
 
 \begin{abstract}
@@ -41,7 +42,7 @@
 \end{abstract}
 
 \section{Introduction}
-\quad The rapid speed of sequencing attained with modern DNA sequencing technology has been instrumental in sequencing complete DNA sequences, which leads to faster sequencing of proteins. Although there have been improvements in the determination of the three-dimensional protein structure by techniques such as X-ray Crystallography, NMR Spectroscopy and Cryo-Electron Microscopy, the gap between the number of known protein sequences (214,406,399 UniProt sequences as of May 2021)\cite{uniprot2021uniprot}, and the number of known structures (177,910 PDBs as of May 2021)\cite{berman2000protein}\cite{burley2021rcsb} is large. Proteins perform a vast array of functions within organisms, and the tertiary structure of a protein can provide important clues about these functions.
+\quad The rapid speed of sequencing attained with modern DNA sequencing technology has been instrumental in sequencing complete DNA sequences, which leads to faster sequencing of proteins. Although there have been improvements in the determination of the three-dimensional protein structure by techniques such as X-ray Crystallography, NMR Spectroscopy and Cryo-Electron Microscopy, the gap between the number of known protein sequences (214,406,399 UniProt sequences as of May 2021)\cite{10.1093/nar/gkaa1100}, and the number of known structures (177,910 PDBs as of May 2021)\cite{berman2000protein}\cite{burley2021rcsb} is large. Proteins perform a vast array of functions within organisms, and the tertiary structure of a protein can provide important clues about these functions.
 
 In drug design, new drugs are designed based on a biological target such as a protein. Identification of the potential active binding site of a protein is an essential step in drug design. Predicting the binding site of a protein, based on the amino acid sequence is a challenging problem and is helpful to identify potential binding residues before the three-dimensional structure becomes available. Ligand binding site prediction methods can be classified into four groups: 3D structure-based, template similarity-based, traditional machine learning-based and deep learning-based prediction methods.
 
