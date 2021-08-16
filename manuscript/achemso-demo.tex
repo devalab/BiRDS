@@ -3,7 +3,7 @@
 \usepackage[T1]{fontenc}
 \usepackage[breaklinks]{hyperref}
 \usepackage{graphicx}
-\usepackage{xcite}
+% \usepackage{xcite}
 
 \graphicspath{ {./resources/} }
 \usepackage{array}
@@ -298,6 +298,10 @@ Figure \ref{fig:6pf6} shows 6PF6\cite{czyzyk2019structure}, where the model pred
 \newpage
 \section{Conclusion}
 In this study, a ResNet was used to predict the most active binding site of a protein. The sc-PDB\cite{desaphy2015sc} dataset contained data of the most ligandable binding site of a protein. MSAs were generated for all protein chains in the dataset using DeepMSA, and features such as Position-Specific Scoring Matrix, Secondary Structure and Solvent Accessibility were calculated. A new test set, SC6K, considering proteins in the last three years, was made using the same filters used to create the sc-PDB dataset. The individual features of the protein chains were concatenated, and BiRDS was trained using 10-fold cross-validation. BiRDS can predict the binding site of a protein fairly accurately using only the sequence information, although it fails to predict the binding site formed between protein chains due to limited data. In drug design, it becomes crucial to determine the pocket where the drug molecule binds with the protein. BiRDS (our method) can be used for early and quick determination of the binding site before the availability of the protein structure.
+
+\section{Data and Software Availability}
+The method implementation, data and pretrained models can be found at \newline
+\href{https://github.com/devalab/BiRDS}{https://github.com/devalab/BiRDS}.
 
 \begin{acknowledgement}
     The authors thank Yashaswi Pathak for being a fruitful part of the project discussions and Rishal Aggarwal and Akash Gupta for reviewing the manuscript. We acknowledge IHub-Data, IIIT Hyderabad, for financial support.
