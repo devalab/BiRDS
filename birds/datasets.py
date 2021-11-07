@@ -5,12 +5,93 @@ from collections import defaultdict
 from glob import glob
 
 import numpy as np
+import pytorch_lightning as pl
 from torch import from_numpy
-from torch.utils.data import Dataset
-from tqdm import tqdm
+from torch.utils.data import DataLoader, Dataset, Subset
 
 AMINO_ACIDS = "XACDEFGHIKLMNPQRSTVWY"
 AA_DICT = defaultdict(lambda: 0, {aa: idx for idx, aa in enumerate(AMINO_ACIDS)})
+
+
+class Birds(pl.LightningDataModule):
+    def __init__(self, hparams):
+        super().__init__()
+        self.num_cpus = hparams.num_cpus
+        self.batch_size = hparams.batch_size
+        if hparams.gpus != 0:
+            self.pin_memory = True
+        else:
+            self.pin_memory = False
+        self.input_size = None
+        self.pos_weight = None
+        if hparams.load_train_ds:
+            self.train_ds = scPDB(hparams)
+            self.input_size = self.train_ds.input_size
+            self.pos_weight = self.train_ds.pos_weight
+        if hparams.run_tests:
+            self.test_ds = scPDB(hparams, test=True)
+            self.input_size = self.test_ds.input_size
+        if hparams.predict:
+            self.test_ds = scPDB(hparams, predict=True)
+            self.input_size = self.test_ds.input_size
+        if not self.input_size:
+            self.input_size = hparams.input_size
+
+    def train_dataloader(self):
+        return DataLoader(
+            Subset(self.train_ds, self.train_ds.train_indices),
+            # self.train_ds,
+            batch_size=self.batch_size,
+            collate_fn=scPDB.collate_fn,
+            num_workers=self.num_cpus,
+            pin_memory=self.pin_memory,
+            shuffle=True,
+        )
+
+    def val_dataloader(self):
+        return DataLoader(
+            Subset(self.train_ds, self.train_ds.valid_indices),
+            # self.test_ds,
+            batch_size=self.batch_size,
+            collate_fn=scPDB.collate_fn,
+            num_workers=self.num_cpus,
+            pin_memory=self.pin_memory,
+            shuffle=False,
+        )
+
+    def test_dataloader(self):
+        return DataLoader(
+            self.test_ds,
+            batch_size=self.batch_size,
+            collate_fn=scPDB.collate_fn,
+            num_workers=self.num_cpus,
+            pin_memory=self.pin_memory,
+            shuffle=False,
+        )
+
+    @staticmethod
+    def add_class_specific_args(parser):
+        parser.add_argument(
+            "--num-cpus",
+            default=10,
+            type=int,
+            help="Number of CPUs for dataloader. Default: %(default)f",
+        )
+        parser.add_argument(
+            "--no-train-ds",
+            dest="load_train_ds",
+            action="store_false",
+            help="Use this during evaluation mode to not load the train dataset. Default: %(default)s",
+        )
+        parser.set_defaults(load_train_ds=True)
+        parser.add_argument(
+            "--predict",
+            dest="predict",
+            action="store_true",
+            help="Run predictions. Default: %(default)s",
+        )
+        parser.set_defaults(predict=False)
+        return parser
 
 
 class scPDB(Dataset):
@@ -68,7 +149,10 @@ class scPDB(Dataset):
 
         # Dataset pdbID to index mapping
         if test or predict:
-            self.dataset = sorted(list(self.pi_to_pis.keys()))
+            if hparams.use_pis:
+                self.dataset = sorted(list(self.pis_to_pisc.keys()))
+            else:
+                self.dataset = sorted(list(self.pi_to_pis.keys()))
         else:
             self.train_fold, self.valid_fold = self.get_fold()
             self.dataset = sorted(self.train_fold + self.valid_fold)
@@ -125,8 +209,6 @@ class scPDB(Dataset):
         if tmp == []:
             tmp = glob(os.path.join(self.raw_dir, "*", name + "_?.npy"))
         tmp = sorted(tmp)
-        if self.hparams.progress_bar_refresh_rate != 0:
-            tmp = tqdm(tmp)
         for file in tmp:
             pis, chain = file.split("/")[-2:]
             chain = chain[-5:-4]
@@ -149,7 +231,7 @@ class scPDB(Dataset):
     def compute_pos_weight(self):
         zeros = 0
         ones = 0
-        for pi in tqdm(self.train_fold, leave=False):
+        for pi in self.train_fold:
             pis = self.pi_to_pis[pi][0]
             for pisc in self.pis_to_pisc[pis]:
                 try:
@@ -165,8 +247,11 @@ class scPDB(Dataset):
 
     def __getitem__(self, index):
         pi = self.dataset[index]
-        # Taking the first structure available
-        pis = self.pi_to_pis[pi][0]
+        if not self.hparams.use_pis:
+            # Taking the first structure available
+            pis = self.pi_to_pis[pi][0]
+        else:
+            pis = pi
         # For all available chains
         data = {}
         meta = {}
@@ -314,5 +399,13 @@ class scPDB(Dataset):
             help="Use C-Beta coordinates for validation and testing metrics instead of C-Alpha. Default: %(default)s",
         )
         parser.set_defaults(use_cb_coords=False)
+
+        parser.add_argument(
+            "--use-pis",
+            dest="use_pis",
+            action="store_true",
+            help="Use different structures of a protein. Default: %(default)s",
+        )
+        parser.set_defaults(use_pis=False)
 
         return parser

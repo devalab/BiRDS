@@ -24,9 +24,42 @@
 
 \thispagestyle{empty}
 
+\tableofcontents
+
 \listoftables
 
 \pagenumbering{arabic}
+
+\newpage
+
+\addcontentsline{toc}{section}{Evaluation Metrics}
+\section{Evaluation Metrics}
+\subsection{Confusion Matrix}
+A confusion matrix is a table that allows for the visualisation of the performance of a supervised learning algorithm. The following terminologies can be defined in the binary classification of a residue as a binding residue (BR) or non-binding residue (NBR).
+\begin{itemize}
+    \item True Positive (TP): Number of BRs predicted correctly as BRs.
+    \item True Negative (TN): Number of NBRs predicted correctly as NBRs.
+    \item False Positive (FP): Number of NBRs predicted incorrectly as BRs.
+    \item False Negative (FN): Number of BRs predicted incorrectly as NBRs.
+\end{itemize}
+
+\noindent The following metrics can be derived from the confusion matrix
+
+Accuracy: ${ACC} = \frac{TP + TN}{TP + TN + FP + FN}$
+
+Precision: ${PPV} = \frac{TP}{TP + FP}$
+
+Recall: ${TPR} = \frac{TP}{TP + FN}$
+
+F1 score: ${F_1} = \frac{2TP}{2TP + FP + FN}$
+
+Matthews Correlation Coefficient: ${MCC} = \frac{TP \times TN - FP \times FN}{\sqrt{(TP + FP)(TP + FN)(TN + FP)(TN + FN)}}$
+
+\subsection{MCC}
+\quad The Matthew's Correlation varies from $[-1, +1]$, with $+1$ representing a perfect prediction, 0 representing no better than a random prediction and -1 representing total disagreement between the prediction and the observation.
+
+\subsection{DCC}
+DCC is the distance between the centre of the predicted binding pocket and the centre of the actual binding pocket. It is commonly used for evaluating 3D-structure based models. The success rate of DCC is defined as the fraction of predictions below a given threshold. Predicted pockets with DCC below 4{\AA} are considered to be correctly located.
 
 % \newpage
 % \begin{center}

@@ -9,19 +9,21 @@ channels:
 
 dependencies:
   - cudatoolkit=10.2
-  - pytorch=1.5.0
-  - torchvision=0.6.0
+  - pytorch=1.10.0
+  - torchvision=0.11.1
   - matplotlib
   - jupyter
   - flake8
-  - biopython=1.77
+  - biopython=1.78
   - rdkit=2019.09.3
   - openbabel
-  - scikit-learn=0.23.1
+  - scikit-learn=1.0.1
   - flask
   - pip
   - pip:
-      - pytorch-lightning==0.8.5
+      - pytorch-lightning==1.5.0
+      - lightning-bolts==0.4.0
+      - torchmetrics==0.6.0
       - xtarfile
-      - test-tube==0.7.5
       - black
+      - rich

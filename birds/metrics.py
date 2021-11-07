@@ -1,10 +1,11 @@
 import itertools
-from collections import OrderedDict
 
 import matplotlib.pyplot as plt
 import numpy as np
 import torch
+from sklearn.metrics import PrecisionRecallDisplay
 from torch.nn.functional import binary_cross_entropy_with_logits
+from torchmetrics.functional import auc
 
 # from torch_cluster import fps, grid_cluster
 
@@ -58,59 +59,70 @@ def dcc_figure(values):
     return figure
 
 
-def make_figure(name, values):
-    if name == "cm":
-        cm = [[0, 0], [0, 0]]
-        for value in values:
-            cm[0][0] += value[0]
-            cm[0][1] += value[1]
-            cm[1][0] += value[2]
-            cm[1][1] += value[3]
-        return confusion_matrix_figure(np.array(cm), ["NBR", "BR"])
-    if name == "dcc":
-        return dcc_figure(values)
-
-
-# Validation Metrics
-
-
-def CM(y_pred, y_true):
-    # Get Confusion Matrix
-    cm = {}
-    cm["tp"] = (y_true * y_pred).sum().float() + SMOOTH
-    cm["tn"] = (~y_true * ~y_pred).sum().float() + SMOOTH
-    cm["fp"] = (~y_true * y_pred).sum().float() + SMOOTH
-    cm["fn"] = (y_true * ~y_pred).sum().float() + SMOOTH
-    return cm
-
-
-def IOU(cm):
-    return cm["tp"] / (cm["tp"] + cm["fp"] + cm["fn"])
-
-
-def MCC(cm):
-    return (cm["tp"] * cm["tn"] - cm["fp"] * cm["fn"]) / torch.sqrt(
-        (cm["tp"] + cm["fp"])
-        * (cm["tp"] + cm["fn"])
-        * (cm["tn"] + cm["fp"])
-        * (cm["tn"] + cm["fn"])
+def roc_figure(fpr, tpr, area):
+    figure = plt.figure(figsize=(8, 8))
+    lw = 2
+    plt.plot(
+        fpr,
+        tpr,
+        color="darkorange",
+        lw=lw,
+        label="ROC curve (area = %0.2f)" % area,
     )
+    plt.plot([0, 1], [0, 1], color="navy", lw=lw, linestyle="--")
+    plt.xlim([0.0, 1.0])
+    plt.ylim([0.0, 1.05])
+    plt.xlabel("False Positive Rate")
+    plt.ylabel("True Positive Rate")
+    plt.title("ROC curve")
+    plt.legend(loc="lower right")
+    return figure
 
 
-def ACCURACY(cm):
-    return (cm["tp"] + cm["tn"]) / (cm["tp"] + cm["tn"] + cm["fp"] + cm["fn"])
+def pr_figure(precision, recall, area):
+    figure, ax = plt.subplots(figsize=(7, 8))
+
+    f_scores = np.linspace(0.2, 0.8, num=4)
+    _, labels = [], []
+    for f_score in f_scores:
+        x = np.linspace(0.01, 1)
+        y = f_score * x / (2 * x - f_score)
+        (l,) = plt.plot(x[y >= 0], y[y >= 0], color="gray", alpha=0.2)
+        plt.annotate("f1={0:0.1f}".format(f_score), xy=(0.9, y[45] + 0.02))
+
+    display = PrecisionRecallDisplay(recall=recall, precision=precision)
+    display.plot(ax=ax, name="PR curve (area = %0.2f)" % area, color="gold")
+
+    # add the legend for the iso-f1 curves
+    handles, labels = display.ax_.get_legend_handles_labels()
+    handles.extend([l])
+    labels.extend(["Iso-F1 curves"])
+    # set the legend and the axes
+    ax.set_xlim([0.0, 1.0])
+    ax.set_ylim([0.0, 1.05])
+    ax.legend(handles=handles, labels=labels, loc="best")
+    ax.set_title("Precision-Recall curve")
+
+    return figure
 
 
-def RECALL(cm):
-    return cm["tp"] / (cm["tp"] + cm["fn"])
-
-
-def PRECISION(cm):
-    return cm["tp"] / (cm["tp"] + cm["fp"])
-
-
-def F1(cm):
-    return (2 * cm["tp"]) / (2 * cm["tp"] + cm["fp"] + cm["fn"])
+def make_figure(key, values):
+    if key[2:] == "ConfusionMatrix":
+        return confusion_matrix_figure(values.detach().cpu().numpy(), ["NBR", "BR"])
+    elif key[2:] == "dcc":
+        return dcc_figure(values.detach().cpu().numpy())
+    elif key[2:] == "ROC":
+        area = auc(values[0], values[1], reorder=True)
+        return roc_figure(
+            values[0].detach().cpu().numpy(), values[1].detach().cpu().numpy(), area
+        )
+    elif key[2:] == "PrecisionRecallCurve":
+        area = auc(values[0], values[1], reorder=True)
+        return pr_figure(
+            values[0].detach().cpu().numpy(), values[1].detach().cpu().numpy(), area
+        )
+    else:
+        return plt.figure(figsize=(8, 8))
 
 
 def DCC(y_pred, y_true, data, meta):
@@ -131,69 +143,6 @@ def DCC(y_pred, y_true, data, meta):
         dcc += [torch.norm(true_centroid - pred_centroid)]
         idx += length
     return dcc
-
-
-# def GRID(y_pred, y_true, data, meta):
-#     idx = 0
-#     out = 0
-#     grid_size = torch.Tensor([40.0, 40.0, 40.0]).to(y_true.device)
-#     for i, length in enumerate(meta["length"]):
-#         coords = data["coords"][i, ..., :length]
-#         true_pocket = coords[:, y_true[idx : idx + length]]
-#         true_pocket = true_pocket[:, ~torch.isinf(true_pocket[0])].t()
-#         true_centroid = torch.mean(true_pocket, dim=0)
-#         pred_pocket = coords[:, y_pred[idx : idx + length]]
-#         pred_pocket = pred_pocket[:, ~torch.isinf(pred_pocket[0])].t()
-#         if len(pred_pocket) == 0:
-#             idx += length
-#             continue
-#         pred_labels = grid_cluster(pred_pocket, grid_size)
-#         max_cluster = []
-#         for val in pred_labels.unique():
-#             cluster = (pred_labels == val).nonzero()
-#             if len(max_cluster) < len(cluster):
-#                 max_cluster = cluster
-#         pred_centroid = torch.mean(pred_pocket[max_cluster], dim=0)
-#         # tmp = true_labels.unique()
-#         # if len(tmp) != 1:
-#         #     print(meta["pisc"][i], len(tmp))
-#         return torch.norm(true_centroid - pred_centroid)
-#         if torch.norm(true_centroid - pred_centroid) < 8.0:
-#             out += 1
-#         idx += length
-#     return torch.tensor(float(out) / len(meta["length"])).float().to(y_true.device)
-
-
-# def FPS(y_pred, y_true, data, meta):
-#     idx = 0
-#     out = 0
-#     for i, length in enumerate(meta["length"]):
-#         coords = data["coords"][i, ..., :length]
-#         true_pocket = coords[:, y_true[idx : idx + length]]
-#         true_pocket = true_pocket[:, ~torch.isinf(true_pocket[0])].t()
-#         pred_pocket = coords[:, y_pred[idx : idx + length]]
-#         pred_pocket = pred_pocket[:, ~torch.isinf(pred_pocket[0])].t()
-#         if len(pred_pocket) == 0:
-#             idx += length
-#             continue
-#         true_fp = fps(true_pocket, ratio=0.5, random_start=False)
-#         true_neighbours = true_pocket[
-#             torch.ones_like(true_pocket[:, 0]).bool().scatter_(0, true_fp, 0.0)
-#         ]
-#         true_centroid = torch.mean(true_neighbours, dim=0)
-#         pred_fp = fps(pred_pocket, ratio=0.5, random_start=False)
-#         pred_neighbours = pred_pocket[
-#             torch.ones_like(pred_pocket[:, 0]).bool().scatter_(0, pred_fp, 0.0)
-#         ]
-#         pred_centroid = torch.mean(pred_neighbours, dim=0)
-#         return torch.norm(true_centroid - pred_centroid)
-#         if torch.norm(true_centroid - pred_centroid) < 8.0:
-#             out += 1
-#         idx += length
-#     return torch.tensor(out / len(meta["length"])).to(y_true.device)
-
-
-# Loss Functions
 
 
 def weighted_focal_loss(y_pred, y_true, gamma=2.0, pos_weight=[1], **kwargs):
@@ -222,33 +171,6 @@ def batch_work(y_preds, y_trues, lengths):
         indices += [i * lengths[0] + el for el in range(lengths[i])]
     indices = torch.tensor(indices).to(y_trues.device)
     return y_preds.take(indices), y_trues.take(indices)
-
-
-def batch_metrics(y_preds, data, meta, is_logits=True, threshold=0.5):
-    y_preds, y_trues = batch_work(y_preds, data["label"], meta["length"])
-    if is_logits:
-        y_preds = torch.sigmoid(y_preds)
-    if threshold:
-        y_preds = (y_preds > threshold).bool()
-    y_trues = y_trues.bool()
-    # top_cluster(y_preds, y_trues, data, meta)
-    # return {}
-    cm = CM(y_preds, y_trues)
-    metrics = OrderedDict(
-        {
-            "mcc": MCC(cm),
-            "acc": ACCURACY(cm),
-            # "fps": FPS(y_preds, y_trues, data, meta),
-            # "grid": GRID(y_preds, y_trues, data, meta),
-            "iou": IOU(cm),
-            "precision": PRECISION(cm),
-            "recall": RECALL(cm),
-            "f1": F1(cm),
-            "f_cm": [torch.stack([cm["tn"], cm["fp"], cm["fn"], cm["tp"]])],
-            "f_dcc": DCC(y_preds, y_trues, data, meta),
-        }
-    )
-    return metrics
 
 
 def batch_loss(y_preds, y_trues, lengths, loss_func, **kwargs):

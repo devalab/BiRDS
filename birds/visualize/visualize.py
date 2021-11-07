@@ -18,7 +18,10 @@ def get_pred_metrics(nets, dataset):
     print("Running through dataset")
     for ind in tqdm(indices):
         pi = dataset.dataset[ind]
-        pis = dataset.pi_to_pis[pi][0]
+        if not hparams.use_pis:
+            pis = dataset.pi_to_pis[pi][0]
+        else:
+            pis = pi
         data, meta = dataset[ind]
         meta["length"] = torch.tensor([len(data["label"])], device=hparams.device)
         for key in data:

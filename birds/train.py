@@ -3,58 +3,54 @@ from argparse import ArgumentParser, Namespace
 
 import pytorch_lightning as pl
 
-from birds.datasets import scPDB
+from birds.datasets import Birds, scPDB
 from birds.models import ResNet
 from birds.net import Net
 
 
-class MyModelCheckpoint(pl.callbacks.ModelCheckpoint):
-    def format_checkpoint_name(self, epoch, metrics, ver=None):
-        if self.filename == "{epoch}":
-            self.filename = "{epoch}-{v_mcc:.3f}-{v_acc:.3f}-{v_f1:.3f}"
-        return super().format_checkpoint_name(epoch, metrics, ver)
-
-
 def main(hparams):
     pl.seed_everything(hparams.seed)
-    logger = pl.loggers.TestTubeLogger(
-        save_dir=hparams.weights_save_path, name=hparams.exp_name, create_git_tag=True
+    logger = pl.loggers.TensorBoardLogger(
+        save_dir=hparams.weights_save_path, name=hparams.exp_name
     )
-    checkpoint_callback = MyModelCheckpoint(
-        monitor="v_mcc", verbose=True, save_top_k=3, mode="max",
-    )
-    bs = hparams.batch_size
-    if hparams.progress_bar_refresh_rate is None:
-        hparams.progress_bar_refresh_rate = 64 // bs
+    callbacks = [
+        pl.callbacks.ModelSummary(),
+        pl.callbacks.ModelCheckpoint(
+            monitor="v_MatthewsCorrcoef",
+            verbose=True,
+            save_top_k=3,
+            mode="max",
+            filename="{epoch:d}-{v_MatthewsCorrcoef:.3f}-{v_Accuracy:.3f}-{v_F1:.3f}",
+        ),
+        pl.callbacks.StochasticWeightAveraging(),
+    ]
+    if hparams.enable_progress_bar:
+        callbacks.append(pl.callbacks.RichProgressBar(refresh_rate_per_second=2))
     const_params = {
         "max_epochs": hparams.net_epochs,
-        "row_log_interval": 64 // bs,
-        "log_save_interval": 256 // bs,
-        "gradient_clip_val": 0,
+        "row_log_interval": 2,
+        "log_save_interval": 8,
     }
     hparams = Namespace(**vars(hparams), **const_params)
-    if not hparams.resume_from_checkpoint:
-        accumulate_grad_batches = {5: max(1, 16 // bs), 10: 64 // bs}
-        # accumulate_grad_batches = 1
-    else:
-        accumulate_grad_batches = 1
     print(hparams)
+
+    datamodule = Birds(hparams)
     trainer = pl.Trainer.from_argparse_args(
         hparams,
         logger=logger,
-        checkpoint_callback=checkpoint_callback,
+        callbacks=callbacks,
         val_check_interval=0.5,
-        # num_sanity_val_steps=60,
-        profiler=True,
-        accumulate_grad_batches=accumulate_grad_batches,
-        deterministic=True,
-        weights_summary="full",
+        precision=16,
+        profiler="simple",
+        # accumulate_grad_batches=accumulate_grad_batches,
+        # deterministic=True,
         # track_grad_norm=2,
         # fast_dev_run=True,
         # overfit_pct=0.05,
     )
-    net = Net(hparams)
-    trainer.fit(net)
+    net = Net(hparams, datamodule.input_size, datamodule.pos_weight)
+
+    trainer.fit(net, ckpt_path=hparams.ckpt_path, datamodule=datamodule)
 
     if hparams.run_tests:
         trainer.test(ckpt_path="best")
@@ -100,10 +96,10 @@ def parse_arguments():
     )
     trainer_group.add_argument(
         "--no-progress-bar",
-        dest="progress_bar_refresh_rate",
-        action="store_const",
-        const=0,
+        dest="enable_progress_bar",
+        action="store_false",
     )
+    trainer_group.set_defaults(enable_progress_bar=True)
     trainer_group.add_argument(
         "--test",
         dest="run_tests",
@@ -113,19 +109,23 @@ def parse_arguments():
     trainer_group.add_argument("--no-test", dest="run_tests", action="store_false")
     trainer_group.set_defaults(run_tests=True)
     trainer_group.add_argument(
-        "--resume-from-checkpoint",
+        "--ckpt-path",
         metavar="PATH",
         default=None,
         type=str,
         help="Resume trainer from the specified checkpoint provided",
     )
 
-    # Dataset Args
-    dataset_group = parser.add_argument_group("Dataset")
+    # LightningDataModule Args
+    data_group = parser.add_argument_group("LightningDataModule")
+    data_group = Birds.add_class_specific_args(data_group)
+
+    # scPDB Dataset Args
+    dataset_group = parser.add_argument_group("scPDB Dataset")
     dataset_group = scPDB.add_class_specific_args(dataset_group)
 
-    # Lightning Module Args
-    net_group = parser.add_argument_group("Net")
+    # LightningModule Args
+    net_group = parser.add_argument_group("LightningModule")
     net_group = Net.add_class_specific_args(net_group)
 
     # ResNet Args

@@ -1,5 +1,6 @@
-\documentclass[journal=jcisd8,manuscript=article]{achemso}
-
+@Control{achemso-control,
+  ctrl-etal-number = 0
+}
 \usepackage[T1]{fontenc}
 \usepackage[breaklinks]{hyperref}
 \usepackage{graphicx}
@@ -15,6 +16,7 @@
 
 \newcommand*\mycommand[1]{\texttt{\emph{#1}}}
 \renewcommand{\thefootnote}{\fnsymbol{footnote}}
+\setkeys{acs}{maxauthors = 0}
 
 \author{Vineeth R. Chelur}
 \author{U. Deva Priyakumar}
@@ -64,7 +66,7 @@ In this paper, a deep residual neural network (ResNet)\cite{he2016deep} is train
 Typically, the complete structure of a protein is unavailable due to missing residues, and hence the entire sequence of the protein is obtained from RCSB \cite{burley2021rcsb} website\footnote{Some PDBs in the dataset were obsoleted, and hence the sequences were manually tracked on RCSB, and the corresponding sequences were used. A list of obsoleted PDBs is provided in Supporting information}. A one-to-one mapping of the amino acids in the sequence to the amino acids in the protein mol2 file is required to know which amino acid belongs to a binding site. This mapping is done by first extracting the protein sequence from the 3D structure. Next, the Needleman-Wunsch dynamic programming algorithm\cite{needleman1970general} is used to align the sequence extracted from the structure file to the downloaded RCSB sequence. This algorithm is implemented using a modified version of Zhanglab's NW-Align program\cite{NWAlign}. The protein structure file is then reindexed, based on this alignment, to match the indexing of the RCSB sequence. This way, the specific binding residues can be labelled in the RCSB sequence.
 
 
-The training set consists of 17,594 PDB structures with 28,959 sequences (9419 unique sequences), originating from 1240 organisms, with the most abundant being humans(28.26\%). The dataset was diverse and contained proteins from 1996 different PFAM families and 856 PFAM clans.
+The training set consists of 17,594 PDB structures with 28,959 sequences (9519 unique sequences), originating from 1240 organisms, with the most abundant being humans(28.26\%). The dataset was diverse and contained proteins from 1996 different PFAM families and 856 PFAM clans.
 
 \begin{table}
     \centering
@@ -286,5 +288,6 @@ The method implementation, data and pretrained models can be found at \newline
 \end{suppinfo}
 
 \bibliography{achemso-demo}
+\bibliographystyle{achemso}
 
 \end{document}
