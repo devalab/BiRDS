@@ -98,17 +98,13 @@ class Net(pl.LightningModule):
     def configure_optimizers(self):
         optimizer = Adam(self.parameters(), lr=self.hparams.lr)
         scheduler = {
-            "scheduler": ReduceLROnPlateau(
-                optimizer, mode="max", patience=4, verbose=True
-            ),
+            "scheduler": ReduceLROnPlateau(optimizer, mode="max", patience=4, verbose=True),
             "monitor": "v_MatthewsCorrcoef",
         }
         return [optimizer], [scheduler]
 
     # learning rate warm-up
-    def optimizer_step(
-        self, curr_epoch, batch_idx, optim, opt_idx, optimizer_closure, *args, **kwargs
-    ):
+    def optimizer_step(self, curr_epoch, batch_idx, optim, opt_idx, optimizer_closure, *args, **kwargs):
         # warm up lr
         warm_up_steps = float(17000 // self.hparams.batch_size)
         if self.trainer.global_step < warm_up_steps:
@@ -133,16 +129,12 @@ class Net(pl.LightningModule):
         calc_figure_metrics.update(y_pred, y_true.int())
         return {
             "f_" + calc_figure_metrics.prefix + "dcc": DCC((y_pred >= 0.5).bool(), y_true.bool(), data, meta),
-            calc_metrics.prefix + "loss": self.loss_func(y_preds, y_true, pos_weight=[1.0])
+            calc_metrics.prefix + "loss": self.loss_func(y_preds, y_true, pos_weight=[1.0]),
         }
 
     def val_test_epoch_end(self, outputs, calc_metrics, calc_figure_metrics):
         metrics = OrderedDict(
-            {
-                key: torch.stack([el[key] for el in outputs]).mean()
-                for key in outputs[0]
-                if not key.startswith("f_")
-            }
+            {key: torch.stack([el[key] for el in outputs]).mean() for key in outputs[0] if not key.startswith("f_")}
         )
         metrics.update(calc_metrics.compute())
         calc_metrics.reset()
@@ -150,18 +142,12 @@ class Net(pl.LightningModule):
             self.try_log(key, val, len(outputs))
 
         figure_metrics = OrderedDict(
-            {
-                key[2:]: torch.stack(sum([el[key] for el in outputs], []))
-                for key in outputs[0]
-                if key.startswith("f_")
-            }
+            {key[2:]: torch.stack(sum([el[key] for el in outputs], [])) for key in outputs[0] if key.startswith("f_")}
         )
         figure_metrics.update(calc_figure_metrics.compute())
         calc_figure_metrics.reset()
         for key, val in figure_metrics.items():
-            self.logger.experiment.add_figure(
-                key, make_figure(key, val), self.current_epoch
-            )
+            self.logger.experiment.add_figure(key, make_figure(key, val), self.current_epoch)
 
     def validation_step(self, batch, batch_idx):
         return self.val_test_step(batch, self.valid_metrics, self.valid_figure_metrics)

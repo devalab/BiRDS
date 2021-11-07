@@ -10,9 +10,7 @@ from birds.net import Net
 
 def main(hparams):
     pl.seed_everything(hparams.seed)
-    logger = pl.loggers.TensorBoardLogger(
-        save_dir=hparams.weights_save_path, name=hparams.exp_name
-    )
+    logger = pl.loggers.TensorBoardLogger(save_dir=hparams.weights_save_path, name=hparams.exp_name)
     callbacks = [
         pl.callbacks.ModelSummary(),
         pl.callbacks.ModelCheckpoint(
@@ -61,12 +59,8 @@ def parse_arguments():
 
     # Trainer Args
     trainer_group = parser.add_argument_group("Trainer")
-    trainer_group.add_argument(
-        "--seed", default=42, type=int, help="Training seed. Default: %(default)d"
-    )
-    trainer_group.add_argument(
-        "--gpus", default=1, type=int, help="Default: %(default)d"
-    )
+    trainer_group.add_argument("--seed", default=42, type=int, help="Training seed. Default: %(default)d")
+    trainer_group.add_argument("--gpus", default=1, type=int, help="Default: %(default)d")
     trainer_group.add_argument(
         "--batch-size",
         metavar="SIZE",
@@ -134,9 +128,7 @@ def parse_arguments():
 
     # Parse as hyperparameters
     hparams = parser.parse_args()
-    hparams.weights_save_path = os.path.abspath(
-        os.path.expanduser(hparams.weights_save_path)
-    )
+    hparams.weights_save_path = os.path.abspath(os.path.expanduser(hparams.weights_save_path))
     hparams.data_dir = os.path.abspath(os.path.expanduser(hparams.data_dir))
     return hparams
 

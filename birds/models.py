@@ -57,9 +57,7 @@ class BasicBlock(torch.nn.Module):
 
 
 class MakeResNet(torch.nn.Module):
-    def __init__(
-        self, layers, kernel_size, input_size, hidden_sizes, norm_layer=None,
-    ):
+    def __init__(self, layers, kernel_size, input_size, hidden_sizes, norm_layer=None):
         super().__init__()
         if norm_layer is None:
             norm_layer = torch.nn.BatchNorm1d
@@ -79,15 +77,11 @@ class MakeResNet(torch.nn.Module):
         # self.maxpool = torch.nn.MaxPool1d(kernel_size=3, stride=1, padding=1)
         self.layers = torch.nn.ModuleList([])
         for i in range(self.depth):
-            self.layers.append(
-                self._make_layer(hidden_sizes[i], layers[i], kernel_size)
-            )
+            self.layers.append(self._make_layer(hidden_sizes[i], layers[i], kernel_size))
 
         for m in self.modules():
             if isinstance(m, torch.nn.Conv1d):
-                torch.nn.init.kaiming_normal_(
-                    m.weight, mode="fan_out", nonlinearity="relu"
-                )
+                torch.nn.init.kaiming_normal_(m.weight, mode="fan_out", nonlinearity="relu")
             elif isinstance(m, (torch.nn.BatchNorm1d, torch.nn.GroupNorm)):
                 torch.nn.init.constant_(m.weight, 1)
                 torch.nn.init.constant_(m.bias, 0)
@@ -104,16 +98,10 @@ class MakeResNet(torch.nn.Module):
             norm_layer(out_planes),
         )
         layers = []
-        layers.append(
-            BasicBlock(
-                self.start_planes, out_planes, kernel_size, norm_layer, downsample
-            )
-        )
+        layers.append(BasicBlock(self.start_planes, out_planes, kernel_size, norm_layer, downsample))
         self.start_planes = out_planes
         for _ in range(1, blocks):
-            layers.append(
-                BasicBlock(self.start_planes, out_planes, kernel_size, norm_layer)
-            )
+            layers.append(BasicBlock(self.start_planes, out_planes, kernel_size, norm_layer))
 
         return torch.nn.Sequential(*layers)
 
@@ -134,9 +122,7 @@ class ResNet(torch.nn.Module):
         super().__init__()
         assert len(hparams.layers) == len(hparams.hidden_sizes)
         self.input_size = input_size
-        self.resnet_layer = MakeResNet(
-            hparams.layers, hparams.kernel_sizes, input_size, hparams.hidden_sizes
-        )
+        self.resnet_layer = MakeResNet(hparams.layers, hparams.kernel_sizes, input_size, hparams.hidden_sizes)
 
     def forward(self, X, lengths, **kwargs):
         # [Batch, input_size, Max_length] -> [Batch, hidden_sizes[-1], Max_length]

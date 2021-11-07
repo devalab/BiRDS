@@ -113,14 +113,10 @@ def make_figure(key, values):
         return dcc_figure(values.detach().cpu().numpy())
     elif key[2:] == "ROC":
         area = auc(values[0], values[1], reorder=True)
-        return roc_figure(
-            values[0].detach().cpu().numpy(), values[1].detach().cpu().numpy(), area
-        )
+        return roc_figure(values[0].detach().cpu().numpy(), values[1].detach().cpu().numpy(), area)
     elif key[2:] == "PrecisionRecallCurve":
         area = auc(values[0], values[1], reorder=True)
-        return pr_figure(
-            values[0].detach().cpu().numpy(), values[1].detach().cpu().numpy(), area
-        )
+        return pr_figure(values[0].detach().cpu().numpy(), values[1].detach().cpu().numpy(), area)
     else:
         return plt.figure(figsize=(8, 8))
 
@@ -148,9 +144,9 @@ def DCC(y_pred, y_true, data, meta):
 def weighted_focal_loss(y_pred, y_true, gamma=2.0, pos_weight=[1], **kwargs):
     pos_weight = torch.Tensor(pos_weight).to(y_true.device)
     y_pred = torch.clamp(torch.sigmoid(y_pred), SMOOTH, 1.0 - SMOOTH)
-    loss = -(
-        pos_weight * y_true * torch.pow(1.0 - y_pred, gamma) * torch.log(y_pred)
-    ) - ((1 - y_true) * torch.pow(y_pred, gamma) * torch.log(1.0 - y_pred))
+    loss = -(pos_weight * y_true * torch.pow(1.0 - y_pred, gamma) * torch.log(y_pred)) - (
+        (1 - y_true) * torch.pow(y_pred, gamma) * torch.log(1.0 - y_pred)
+    )
     return torch.mean(loss)
 
 
@@ -159,9 +155,7 @@ def weighted_bce_loss(y_pred, y_true, pos_weight, **kwargs):
         pos_weight = y_true.sum()
         pos_weight = [(len(y_true) - pos_weight) / pos_weight]
     pos_weight = torch.Tensor(pos_weight).to(y_true.device)
-    return binary_cross_entropy_with_logits(
-        y_pred, y_true, pos_weight=pos_weight, reduction="mean"
-    )
+    return binary_cross_entropy_with_logits(y_pred, y_true, pos_weight=pos_weight, reduction="mean")
 
 
 def batch_work(y_preds, y_trues, lengths):

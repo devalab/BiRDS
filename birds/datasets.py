@@ -319,9 +319,7 @@ class scPDB(Dataset):
         for key in fdata.keys():
             data[key] = np.zeros((bs, *fdata[key].shape), dtype=fdata[key].dtype)
             for i, (d, _) in enumerate(samples):
-                data[key][i, ..., : meta["length"][i]] = d[key][
-                    ..., : meta["length"][i]
-                ]
+                data[key][i, ..., : meta["length"][i]] = d[key][..., : meta["length"][i]]
             data[key] = from_numpy(data[key])
         return data, meta
 
