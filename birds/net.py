@@ -20,7 +20,6 @@ from torchmetrics import (
 
 from birds.metrics import (
     DCC,
-    batch_loss,
     batch_work,
     make_figure,
     weighted_bce_loss,
@@ -122,40 +121,39 @@ class Net(pl.LightningModule):
     def training_step(self, batch, batch_idx):
         data, meta = batch
         y_pred = self(data["feature"], meta["length"])
-        loss = batch_loss(
-            y_pred,
-            data["label"],
-            meta["length"],
-            self.loss_func,
-            pos_weight=self.hparams.pos_weight,
-        )
-        return loss
+        y_pred, y_true = batch_work(y_pred, data["label"], meta["length"])
+        return self.loss_func(y_pred, y_true, pos_weight=self.hparams.pos_weight)
 
     def val_test_step(self, batch, calc_metrics, calc_figure_metrics):
         data, meta = batch
         y_pred = self(data["feature"], meta["length"])
-        y_pred, y_true = batch_work(y_pred, data["label"], meta["length"])
-        y_pred = torch.sigmoid(y_pred)
-        metrics = calc_metrics(y_pred, y_true.int())
-        self.log_dict(
-            metrics,
-            prog_bar=True,
-            batch_size=len(meta["length"]),
-            add_dataloader_idx=True,
-            on_epoch=True,
-            rank_zero_only=True,
-        )
+        y_preds, y_true = batch_work(y_pred, data["label"], meta["length"])
+        y_pred = torch.sigmoid(y_preds)
+        calc_metrics.update(y_pred, y_true.int())
         calc_figure_metrics.update(y_pred, y_true.int())
         return {
-            calc_figure_metrics.prefix
-            + "dcc": DCC((y_pred >= 0.5).bool(), y_true.bool(), data, meta)
+            "f_" + calc_figure_metrics.prefix + "dcc": DCC((y_pred >= 0.5).bool(), y_true.bool(), data, meta),
+            calc_metrics.prefix + "loss": self.loss_func(y_preds, y_true, pos_weight=[1.0])
         }
 
-    def val_test_epoch_end(self, outputs, calc_figure_metrics):
+    def val_test_epoch_end(self, outputs, calc_metrics, calc_figure_metrics):
+        metrics = OrderedDict(
+            {
+                key: torch.stack([el[key] for el in outputs]).mean()
+                for key in outputs[0]
+                if not key.startswith("f_")
+            }
+        )
+        metrics.update(calc_metrics.compute())
+        calc_metrics.reset()
+        for key, val in metrics.items():
+            self.try_log(key, val, len(outputs))
+
         figure_metrics = OrderedDict(
             {
-                key: torch.stack(sum([el[key] for el in outputs], []))
+                key[2:]: torch.stack(sum([el[key] for el in outputs], []))
                 for key in outputs[0]
+                if key.startswith("f_")
             }
         )
         figure_metrics.update(calc_figure_metrics.compute())
@@ -169,13 +167,20 @@ class Net(pl.LightningModule):
         return self.val_test_step(batch, self.valid_metrics, self.valid_figure_metrics)
 
     def validation_epoch_end(self, outputs):
-        self.val_test_epoch_end(outputs, self.valid_figure_metrics)
+        self.val_test_epoch_end(outputs, self.valid_metrics, self.valid_figure_metrics)
 
     def test_step(self, batch, batch_idx):
         return self.val_test_step(batch, self.test_metrics, self.test_figure_metrics)
 
     def test_epoch_end(self, outputs):
-        self.val_test_epoch_end(outputs, self.test_figure_metrics)
+        self.val_test_epoch_end(outputs, self.test_metrics, self.test_figure_metrics)
+
+    def try_log(self, key, value, batch_size):
+        try:
+            self.log(key, value, prog_bar=True, batch_size=batch_size)
+        except Exception as e:
+            print(e)
+            return
 
     @staticmethod
     def add_class_specific_args(parser):

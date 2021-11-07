@@ -171,9 +171,3 @@ def batch_work(y_preds, y_trues, lengths):
         indices += [i * lengths[0] + el for el in range(lengths[i])]
     indices = torch.tensor(indices).to(y_trues.device)
     return y_preds.take(indices), y_trues.take(indices)
-
-
-def batch_loss(y_preds, y_trues, lengths, loss_func, **kwargs):
-    y_preds, y_trues = batch_work(y_preds, y_trues, lengths)
-    loss = loss_func(y_preds, y_trues, **kwargs)
-    return loss
