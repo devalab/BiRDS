@@ -2,6 +2,7 @@ import os
 from argparse import ArgumentParser, Namespace
 
 import pytorch_lightning as pl
+from birds.bert import BERT
 
 from birds.datasets import Birds, scPDB
 from birds.models import ResNet
@@ -40,7 +41,7 @@ def main(hparams):
         val_check_interval=0.5,
         precision=16,
         profiler="simple",
-        # accumulate_grad_batches=accumulate_grad_batches,
+        # accumulate_grad_batches=8,
         # deterministic=True,
         # track_grad_norm=2,
         # fast_dev_run=True,
@@ -64,7 +65,7 @@ def parse_arguments():
     trainer_group.add_argument(
         "--batch-size",
         metavar="SIZE",
-        default=32,
+        default=1,
         type=int,
         help="Default: %(default)d",
     )
@@ -125,6 +126,10 @@ def parse_arguments():
     # ResNet Args
     resnet_group = parser.add_argument_group("ResNet")
     resnet_group = ResNet.add_class_specific_args(resnet_group)
+
+    # Bert Args
+    bert_group = parser.add_argument_group("Bert")
+    bert_group = BERT.add_class_specific_args(bert_group)
 
     # Parse as hyperparameters
     hparams = parser.parse_args()

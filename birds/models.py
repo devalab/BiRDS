@@ -167,7 +167,7 @@ class Detector(torch.nn.Module):
         self.detector = torch.nn.Sequential(*layers, torch.nn.Linear(input_size, 1))
         # torch.sigmoid will be done later in the loss function
 
-    def forward(self, X):
+    def forward(self, X, **kwargs):
         # [Batch, Max_len]
         return self.detector(X).squeeze(dim=2)
 

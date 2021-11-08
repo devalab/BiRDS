@@ -70,8 +70,8 @@ def roc_figure(fpr, tpr, area):
         label="ROC curve (area = %0.2f)" % area,
     )
     plt.plot([0, 1], [0, 1], color="navy", lw=lw, linestyle="--")
-    plt.xlim([0.0, 1.0])
-    plt.ylim([0.0, 1.05])
+    plt.xlim([0.0, 1.01])
+    plt.ylim([0.0, 1.01])
     plt.xlabel("False Positive Rate")
     plt.ylabel("True Positive Rate")
     plt.title("ROC curve")

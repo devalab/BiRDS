@@ -279,6 +279,7 @@ class scPDB(Dataset):
 
             _data["feature"] = np.vstack(inputs).astype(np.float32)
             _data["label"] = self.labels[pisc].astype(np.float32)
+            _data["segment_label"] = np.full_like(_data["label"], i + 1).astype(np.int32)
             if not self.predict and (self.test or index in self.valid_indices):
                 _data["coords"] = self.get_coords(pisc).astype(np.float32)
 
