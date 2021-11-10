@@ -1,4 +1,5 @@
 import torch
+import math
 
 
 class BasicBlock(torch.nn.Module):
@@ -72,7 +73,7 @@ class MakeResNet(torch.nn.Module):
             bias=False,
         )
         self.bn1 = norm_layer(self.start_planes)
-        self.relu = torch.nn.ReLU(inplace=True)
+        self.relu = torch.nn.ReLU()
         self.depth = len(hidden_sizes)
         # self.maxpool = torch.nn.MaxPool1d(kernel_size=3, stride=1, padding=1)
         self.layers = torch.nn.ModuleList([])
@@ -122,14 +123,27 @@ class ResNet(torch.nn.Module):
         super().__init__()
         assert len(hparams.layers) == len(hparams.hidden_sizes)
         self.input_size = input_size
-        self.resnet_layer = MakeResNet(hparams.layers, hparams.kernel_sizes, input_size, hparams.hidden_sizes)
+        self.embedding = BERTEmbedding(vocab_size=21, embed_size=hparams.embedding_size)
+        self.resnet_layer = MakeResNet(
+            hparams.layers, hparams.kernel_sizes, input_size - 21 + hparams.embedding_size, hparams.hidden_sizes
+        )
 
     def forward(self, X, lengths, **kwargs):
         # [Batch, input_size, Max_length] -> [Batch, hidden_sizes[-1], Max_length]
-        return self.resnet_layer(X)
+        ohe = X[:, :21].argmax(dim=1)
+        ohe = self.embedding(ohe, segment_label=kwargs["segment_label"])
+        out = torch.cat((ohe.transpose(1, 2), X[:, 21:]), dim=1)
+        out = self.resnet_layer(out)
+        return out
 
     @staticmethod
     def add_class_specific_args(parser):
+        parser.add_argument(
+            "--embedding-size",
+            type=int,
+            default=32,
+            help="Embedding size. Default: %(default)s",
+        )
         parser.add_argument(
             "--layers",
             nargs="+",
@@ -182,3 +196,71 @@ class Detector(torch.nn.Module):
             help="The number of units in each layer of the detector. Default: %(default)s",
         )
         return parser
+
+
+class GELU(torch.nn.Module):
+    """
+    Paper Section 3.4, last paragraph notice that BERT used the GELU instead of RELU
+    """
+
+    def forward(self, x):
+        return 0.5 * x * (1 + torch.tanh(math.sqrt(2 / math.pi) * (x + 0.044715 * torch.pow(x, 3))))
+
+
+class PositionalEmbedding(torch.nn.Module):
+    def __init__(self, d_model, max_len=4096):
+        super().__init__()
+
+        # Compute the positional encodings once in log space.
+        pe = torch.zeros(max_len, d_model).float()
+        pe.require_grad = False
+
+        position = torch.arange(0, max_len).float().unsqueeze(1)
+        div_term = (torch.arange(0, d_model, 2).float() * -(math.log(10000.0) / d_model)).exp()
+
+        pe[:, 0::2] = torch.sin(position * div_term)
+        pe[:, 1::2] = torch.cos(position * div_term)
+
+        pe = pe.unsqueeze(0)
+        self.register_buffer("pe", pe)
+
+    def forward(self, x):
+        return self.pe[:, : x.size(1)]
+
+
+class TokenEmbedding(torch.nn.Embedding):
+    def __init__(self, vocab_size, embed_size=512):
+        super().__init__(vocab_size, embed_size, padding_idx=0)
+
+
+class SegmentEmbedding(torch.nn.Embedding):
+    def __init__(self, embed_size=512):
+        super().__init__(17, embed_size, padding_idx=0)
+
+
+class BERTEmbedding(torch.nn.Module):
+    """
+    BERT Embedding which is consisted with under features
+        1. TokenEmbedding : normal embedding matrix
+        2. PositionalEmbedding : adding positional information using sin, cos
+        2. SegmentEmbedding : adding sentence segment info, (sent_A:1, sent_B:2)
+
+        sum of all these features are output of BERTEmbedding
+    """
+
+    def __init__(self, vocab_size, embed_size, dropout=0.2):
+        """
+        :param vocab_size: total vocab size
+        :param embed_size: embedding size of token embedding
+        :param dropout: dropout rate
+        """
+        super().__init__()
+        self.token = TokenEmbedding(vocab_size=vocab_size, embed_size=embed_size)
+        self.position = PositionalEmbedding(d_model=self.token.embedding_dim)
+        self.segment = SegmentEmbedding(embed_size=self.token.embedding_dim)
+        self.dropout = torch.nn.Dropout(p=dropout)
+        self.embed_size = embed_size
+
+    def forward(self, sequence, segment_label):
+        x = self.token(sequence) + self.position(sequence) + self.segment(segment_label)
+        return self.dropout(x)

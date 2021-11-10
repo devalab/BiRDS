@@ -64,7 +64,7 @@ class Net(pl.LightningModule):
         self.valid_figure_metrics = figure_metrics.clone(prefix="v_")
         self.test_figure_metrics = figure_metrics.clone(prefix="t_")
 
-        self.model_class = BERT
+        self.model_class = ResNet
         self.embedding_model = self.model_class(input_size, hparams)
         dummy = torch.ones((1, input_size, 10))
         self.embedding_dim = self.embedding_model(dummy, dummy.shape[2], segment_label=dummy[:, 0, :].int()).shape[1]
@@ -117,13 +117,13 @@ class Net(pl.LightningModule):
 
     def training_step(self, batch, batch_idx):
         data, meta = batch
-        y_pred = self(data["feature"], meta["length"], segment_label=data["segment_label"].int())
+        y_pred = self(data["feature"], meta["length"], segment_label=data["segment_label"])
         y_pred, y_true = batch_work(y_pred, data["label"], meta["length"])
         return self.loss_func(y_pred, y_true, pos_weight=self.hparams.pos_weight)
 
     def val_test_step(self, batch, calc_metrics, calc_figure_metrics):
         data, meta = batch
-        y_pred = self(data["feature"], meta["length"], segment_label=data["segment_label"].int())
+        y_pred = self(data["feature"], meta["length"], segment_label=data["segment_label"])
         y_preds, y_true = batch_work(y_pred, data["label"], meta["length"])
         y_pred = torch.sigmoid(y_preds)
         calc_metrics.update(y_pred, y_true.int())

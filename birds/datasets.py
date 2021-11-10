@@ -405,6 +405,6 @@ class scPDB(Dataset):
             action="store_true",
             help="Use different structures of a protein. Default: %(default)s",
         )
-        parser.set_defaults(use_pis=False)
+        parser.set_defaults(use_pis=True)
 
         return parser

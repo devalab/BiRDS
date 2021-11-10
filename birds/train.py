@@ -41,7 +41,7 @@ def main(hparams):
         val_check_interval=0.5,
         precision=16,
         profiler="simple",
-        # accumulate_grad_batches=8,
+        accumulate_grad_batches=16,
         # deterministic=True,
         # track_grad_norm=2,
         # fast_dev_run=True,
@@ -65,7 +65,7 @@ def parse_arguments():
     trainer_group.add_argument(
         "--batch-size",
         metavar="SIZE",
-        default=1,
+        default=3,
         type=int,
         help="Default: %(default)d",
     )
