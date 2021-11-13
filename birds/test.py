@@ -33,7 +33,7 @@ def validate(net):
 def predict(nets, data, meta, threshold=5):
     y_preds = []
     for i, net in enumerate(nets):
-        y_pred = (torch.sigmoid(net(data["feature"], meta["length"])) > 0.5).bool()
+        y_pred = (torch.sigmoid(net(data["feature"], meta["length"])) >= net.hparams.threshold).bool()
         y_preds.append(y_pred)
     return (torch.stack(y_preds).sum(dim=0) >= threshold).bool()
 

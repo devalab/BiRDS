@@ -102,7 +102,7 @@ def parse_arguments():
         help="Run tests on model. Default: %(default)s",
     )
     trainer_group.add_argument("--no-test", dest="run_tests", action="store_false")
-    trainer_group.set_defaults(run_tests=True)
+    trainer_group.set_defaults(run_tests=False)
     trainer_group.add_argument(
         "--ckpt-path",
         metavar="PATH",

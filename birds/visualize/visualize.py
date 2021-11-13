@@ -31,7 +31,7 @@ def get_pred_metrics(nets, dataset):
             y_pred, y_true = batch_work(
                 net(data["feature"], meta["length"]), data["label"], meta["length"]
             )
-            y_preds.append((torch.sigmoid(y_pred) > 0.5).float())
+            y_preds.append((torch.sigmoid(y_pred) >= net.hparams.threshold).float())
         y_pred = torch.mean(torch.stack(y_preds), dim=0)
         metrics = batch_metrics(y_pred, data, meta, is_logits=False, threshold=0.499)
         metrics["f_dcc"] = metrics["f_dcc"][0]

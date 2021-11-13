@@ -17,15 +17,9 @@ from torchmetrics import (
     PrecisionRecallCurve,
     Recall,
 )
-from birds.bert import BERT
+from torchmetrics.functional import auc
 
-from birds.metrics import (
-    DCC,
-    batch_work,
-    make_figure,
-    weighted_bce_loss,
-    weighted_focal_loss,
-)
+from birds.metrics import DCC, batch_work, make_figure, weighted_bce_loss, weighted_focal_loss
 from birds.models import Detector, ResNet
 
 SMOOTH = 1e-6
@@ -43,12 +37,12 @@ class Net(pl.LightningModule):
 
         metrics = MetricCollection(
             [
-                MatthewsCorrcoef(2),
-                Accuracy(),
-                F1(),
-                IoU(2),
-                Precision(),
-                Recall(),
+                MatthewsCorrcoef(2, threshold=hparams.threshold),
+                Accuracy(threshold=hparams.threshold),
+                F1(threshold=hparams.threshold),
+                IoU(2, threshold=hparams.threshold),
+                Precision(threshold=hparams.threshold),
+                Recall(threshold=hparams.threshold),
             ]
         )
         self.valid_metrics = metrics.clone(prefix="v_")
@@ -56,7 +50,7 @@ class Net(pl.LightningModule):
 
         figure_metrics = MetricCollection(
             [
-                ConfusionMatrix(2),
+                ConfusionMatrix(2, threshold=hparams.threshold),
                 ROC(),
                 PrecisionRecallCurve(),
             ]
@@ -129,7 +123,9 @@ class Net(pl.LightningModule):
         calc_metrics.update(y_pred, y_true.int())
         calc_figure_metrics.update(y_pred, y_true.int())
         return {
-            "f_" + calc_figure_metrics.prefix + "dcc": DCC((y_pred >= 0.5).bool(), y_true.bool(), data, meta),
+            "f_"
+            + calc_figure_metrics.prefix
+            + "dcc": DCC((y_pred >= self.hparams.threshold).bool(), y_true.bool(), data, meta),
             calc_metrics.prefix + "loss": self.loss_func(y_preds, y_true, pos_weight=[1.0]),
         }
 
@@ -148,6 +144,10 @@ class Net(pl.LightningModule):
         figure_metrics.update(calc_figure_metrics.compute())
         calc_figure_metrics.reset()
         for key, val in figure_metrics.items():
+            if key[2:] == "ROC":
+                self.try_log("v_auroc", auc(val[0], val[1], reorder=True), len(outputs))
+            if key[2:] == "PrecisionRecallCurve":
+                self.try_log("v_auprc", auc(val[0], val[1], reorder=True), len(outputs))
             self.logger.experiment.add_figure(key, make_figure(key, val), self.current_epoch)
 
     def validation_step(self, batch, batch_idx):
@@ -197,5 +197,11 @@ class Net(pl.LightningModule):
             default="bce",
             choices=["bce", "focal"],
             help="Loss function to use. Default: %(default)s",
+        )
+        parser.add_argument(
+            "--threshold",
+            type=float,
+            default=0.5,
+            help="Threshold to use for binary classification. Default: %(default)f",
         )
         return parser
