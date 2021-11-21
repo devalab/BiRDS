@@ -179,7 +179,7 @@ class scPDB(Dataset):
         sequences = {}
         labels = {}
         if self.test:
-            info = "no_one_msa_info.txt"
+            info = "unique_info.txt"
         else:
             info = "info.txt"
         with open(os.path.join(self.dataset_dir, info)) as f:

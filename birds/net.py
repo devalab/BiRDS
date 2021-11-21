@@ -144,11 +144,11 @@ class Net(pl.LightningModule):
         figure_metrics.update(calc_figure_metrics.compute())
         calc_figure_metrics.reset()
         for key, val in figure_metrics.items():
+            self.logger.experiment.add_figure(key, make_figure(key, val), self.current_epoch)
             if key[2:] == "ROC":
                 self.try_log("v_auroc", auc(val[0], val[1], reorder=True), len(outputs))
             if key[2:] == "PrecisionRecallCurve":
                 self.try_log("v_auprc", auc(val[0], val[1], reorder=True), len(outputs))
-            self.logger.experiment.add_figure(key, make_figure(key, val), self.current_epoch)
 
     def validation_step(self, batch, batch_idx):
         return self.val_test_step(batch, self.valid_metrics, self.valid_figure_metrics)
