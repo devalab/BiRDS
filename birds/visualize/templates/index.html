@@ -30,12 +30,12 @@
             {% for pis in validation %}
             <tr>
                 <td><a href="{{pis}}">{{pis}}</a></td>
-                <td>{{ "%0.2f" % validation[pis]["metrics"]["mcc"]|float }}</td>
-                <td>{{ "%0.2f" % validation[pis]["metrics"]["acc"]|float }}</td>
-                <td>{{ "%0.2f" % validation[pis]["metrics"]["iou"]|float }}</td>
-                <td>{{ "%0.2f" % validation[pis]["metrics"]["f_dcc"]|float }}</td>
-                <td>{{ "%0.2f" % validation[pis]["metrics"]["precision"]|float }}</td>
-                <td>{{ "%0.2f" % validation[pis]["metrics"]["recall"]|float }}</td>
+                <td>{{ "%0.2f" % validation[pis]["metrics"]["MatthewsCorrcoef"]|float }}</td>
+                <td>{{ "%0.2f" % validation[pis]["metrics"]["Accuracy"]|float }}</td>
+                <td>{{ "%0.2f" % validation[pis]["metrics"]["IoU"]|float }}</td>
+                <td>{{ "%0.2f" % validation[pis]["metrics"]["dcc"]|float }}</td>
+                <td>{{ "%0.2f" % validation[pis]["metrics"]["Precision"]|float }}</td>
+                <td>{{ "%0.2f" % validation[pis]["metrics"]["Recall"]|float }}</td>
             </tr>
             {% endfor %}
         </table>
@@ -58,12 +58,12 @@
             {% for pis in test %}
             <tr>
                 <td><a href="{{pis}}">{{pis}}</a></td>
-                <td>{{ "%0.2f" % test[pis]["metrics"]["mcc"]|float }}</td>
-                <td>{{ "%0.2f" % test[pis]["metrics"]["acc"]|float }}</td>
-                <td>{{ "%0.2f" % test[pis]["metrics"]["iou"]|float }}</td>
-                <td>{{ "%0.2f" % test[pis]["metrics"]["f_dcc"]|float }}</td>
-                <td>{{ "%0.2f" % test[pis]["metrics"]["precision"]|float }}</td>
-                <td>{{ "%0.2f" % test[pis]["metrics"]["recall"]|float }}</td>
+                <td>{{ "%0.2f" % test[pis]["metrics"]["MatthewsCorrcoef"]|float }}</td>
+                <td>{{ "%0.2f" % test[pis]["metrics"]["Accuracy"]|float }}</td>
+                <td>{{ "%0.2f" % test[pis]["metrics"]["IoU"]|float }}</td>
+                <td>{{ "%0.2f" % test[pis]["metrics"]["dcc"]|float }}</td>
+                <td>{{ "%0.2f" % test[pis]["metrics"]["Precision"]|float }}</td>
+                <td>{{ "%0.2f" % test[pis]["metrics"]["Recall"]|float }}</td>
             </tr>
             {% endfor %}
         </table>

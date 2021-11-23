@@ -2,55 +2,44 @@ import os
 from argparse import ArgumentParser
 from shutil import copyfile
 
-import torch
-from birds.metrics import batch_metrics, batch_work
-from birds.test import load_nets_frozen
+import numpy as np
+from birds.datasets import Birds, scPDB
+from birds.metrics import DCC, batch_work
+from birds.test import load_nets_frozen, predict
 from flask import Flask, render_template
+from pytorch_lightning.utilities.apply_func import move_data_to_device
 from tqdm.auto import tqdm
 
 
-def get_pred_metrics(nets, dataset):
+def get_pred_metrics(nets, dataloader):
     out = {}
-    try:
-        indices = dataset.valid_indices
-    except AttributeError:
-        indices = range(len(dataset.dataset))
+    thresh = sum([net.hparams.threshold for net in nets]) / len(nets)
     print("Running through dataset")
-    for ind in tqdm(indices):
-        pi = dataset.dataset[ind]
-        if not hparams.use_pis:
-            pis = dataset.pi_to_pis[pi][0]
-        else:
-            pis = pi
-        data, meta = dataset[ind]
-        meta["length"] = torch.tensor([len(data["label"])], device=hparams.device)
-        for key in data:
-            data[key] = torch.tensor([data[key]], device=hparams.device)
-        y_preds = []
-        for i, net in enumerate(nets):
-            y_pred, y_true = batch_work(
-                net(data["feature"], meta["length"]), data["label"], meta["length"]
-            )
-            y_preds.append((torch.sigmoid(y_pred) >= net.hparams.threshold).float())
-        y_pred = torch.mean(torch.stack(y_preds), dim=0)
-        metrics = batch_metrics(y_pred, data, meta, is_logits=False, threshold=0.499)
-        metrics["f_dcc"] = metrics["f_dcc"][0]
-        metrics = {key: val.item() for key, val in metrics.items() if key != "f_cm"}
-        metrics["mcc"] *= 100.0
-        metrics["acc"] *= 100.0
-        metrics["iou"] *= 100.0
-        metrics["precision"] *= 100.0
-        metrics["recall"] *= 100.0
-        metrics["f1"] *= 100.0
-        out[pis] = {"data": data, "meta": meta, "y_pred": y_pred, "metrics": metrics}
-        # break
-    out = {
-        k: v
-        for k, v in sorted(
-            out.items(), key=lambda item: item[1]["metrics"]["mcc"], reverse=True
+    for _, batch in tqdm(enumerate(dataloader)):
+        data, meta = scPDB.collate_fn([batch])
+        data, meta = move_data_to_device((data, meta), nets[0].device)
+        y_pred = predict(nets, data, meta)
+        y_pred, y_true = batch_work(y_pred, data["label"], meta["length"])
+        metric = nets[0].test_metrics(y_pred, y_true.int())
+        metric = {
+            k[2:]: np.nan_to_num(v.detach().cpu().numpy(), nan=-1, posinf=-1, neginf=-1).item()
+            for k, v in metric.items()
+        }
+        # metric["ConfusionMatrix"] = nets[0].test_figure_metrics(y_pred, y_true.int())["t_ConfusionMatrix"]
+        dcc = (
+            move_data_to_device(DCC((y_pred >= thresh).bool(), y_true.bool(), data, meta), "cpu")[0]
+            .detach()
+            .cpu()
+            .numpy()
         )
-    }
-    return out
+        metric["dcc"] = np.nan_to_num(dcc, nan=-1, posinf=-1, neginf=-1).item()
+        out[meta["pisc"][0][0].split("/")[0]] = {
+            "data": {k: v[0] for k, v in data.items()},
+            "meta": {k: v[0] for k, v in meta.items()},
+            "y_pred": (y_pred >= thresh).bool(),
+            "metrics": metric,
+        }
+    return dict(sorted(out.items(), key=lambda item: item[1]["metrics"]["MatthewsCorrcoef"], reverse=True))
 
 
 def parse_arguments():
@@ -94,11 +83,13 @@ validation = {}
 test = {}
 if not hparams.debug:
     nets = load_nets_frozen(hparams)
+    nets[0].hparams.batch_size = 1
+    datamodule = Birds(nets[0].hparams)
     hparams.device = nets[0].device
     if hparams.validate:
-        validation = get_pred_metrics([nets[0]], nets[0].train_ds)
+        validation = get_pred_metrics([nets[0]], datamodule.train_ds)
     else:
-        test = get_pred_metrics(nets, nets[0].test_ds)
+        test = get_pred_metrics(nets, datamodule.test_ds)
 
 app = Flask(__name__, static_url_path="")
 
@@ -112,6 +103,8 @@ def main():
 
 @app.route("/<pis>")
 def show(pis):
+    if pis == "favicon.ico":
+        return ""
     if hparams.debug:
         return render_template(
             "show.html",
@@ -138,9 +131,9 @@ def show(pis):
     y_pred = hlp["y_pred"]
     data = hlp["data"]
     meta = hlp["meta"]
-    y_true = data["label"][0].bool()
+    y_true = data["label"].bool()
     # y_pred = (torch.sigmoid(y_pred[0]) > 0.5).bool()
-    y_pred = (y_pred >= 0.5).bool()
+    # y_pred = (y_pred >= 0.5).bool()
     # print(y_true)
     # print(y_pred)
     selections = [""] * 3

@@ -2,11 +2,14 @@ import os
 import re
 from argparse import ArgumentParser
 from shutil import copyfile
-from test import *
+from test import load_nets_frozen, predict
 
 from msa_generator.extract_features import extract_features_from_file
 from msa_generator.generate_msa import generate_msas_from_file
+from pytorch_lightning.utilities.apply_func import move_data_to_device
+from tqdm import tqdm
 
+from birds.datasets import Birds
 from utils import *
 
 PIS = "[a-zA-Z0-9]{4}_[0-9]{1}"
@@ -37,26 +40,23 @@ def main(hparams):
     hparams.data_dir = os.path.dirname(hparams.dataset_dir)
     hparams.predict = True
     nets = load_nets_frozen(hparams)
+    datamodule = Birds(nets[0].hparams)
 
     print("Running models on the predict set")
-    test_dl = nets[0].test_dataloader()
+    test_dl = datamodule.test_dataloader()
     device = nets[0].device
     predictions = []
-    for idx, batch in tqdm(enumerate(test_dl)):
+    for _, batch in tqdm(enumerate(test_dl)):
         data, meta = move_data_to_device(batch, device)
-        y_pred = predict(nets, data, meta).cpu().numpy()
+        y_pred = predict(nets, data, meta)
+        y_pred = (y_pred >= nets[0].hparams.threshold).bool().detach().cpu().numpy()
         batch_size = len(meta["length"])
         for i in range(batch_size):
             piscs = meta["pisc"][i]
             sequences = meta["sequence"][i]
             cumulative = 0
             for j in range(len(piscs)):
-                label = "".join(
-                    [
-                        "1" if el else "0"
-                        for el in y_pred[i][cumulative : cumulative + len(sequences[j])]
-                    ]
-                )
+                label = "".join(["1" if el else "0" for el in y_pred[i][cumulative : cumulative + len(sequences[j])]])
                 cumulative += len(sequences[j])
                 predictions.append([piscs[j], sequences[j], label])
             predictions.append([])
