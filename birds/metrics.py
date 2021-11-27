@@ -1,15 +1,9 @@
-import itertools
-
 import matplotlib.pyplot as plt
 import numpy as np
 import torch
-from sklearn.metrics import PrecisionRecallDisplay
+from sklearn.metrics import PrecisionRecallDisplay, ConfusionMatrixDisplay
 from torch.nn.functional import binary_cross_entropy_with_logits
 from torchmetrics.functional import auc
-
-# from torch_cluster import fps, grid_cluster
-
-# Utils
 
 SMOOTH = 1e-6
 
@@ -22,26 +16,9 @@ def confusion_matrix_figure(cm, class_names):
     cm (array, shape = [n, n]): a confusion matrix of integer classes
     class_names (array, shape = [n]): String names of the integer classes
     """
-    figure = plt.figure(figsize=(8, 8))
-    plt.imshow(cm, interpolation="nearest", cmap=plt.cm.Blues)
-    plt.title("Confusion matrix")
-    plt.colorbar()
-    tick_marks = np.arange(len(class_names))
-    plt.xticks(tick_marks, class_names, rotation=45)
-    plt.yticks(tick_marks, class_names)
-
-    # Normalize the confusion matrix.
-    cm = np.around(cm.astype("float") / cm.sum(axis=1)[:, np.newaxis], decimals=2)
-
-    # Use red text if squares are dark; otherwise black.
-    threshold = cm.max() / 2.0
-    for i, j in itertools.product(range(cm.shape[0]), range(cm.shape[1])):
-        color = "red" if cm[i, j] > threshold else "black"
-        plt.text(j, i, cm[i, j], horizontalalignment="center", color=color)
-
-    plt.tight_layout()
-    plt.ylabel("True label")
-    plt.xlabel("Predicted label")
+    figure, ax = plt.subplots(figsize=(8, 8))
+    display = ConfusionMatrixDisplay(confusion_matrix=cm, display_labels=class_names)
+    display.plot(ax=ax, cmap="PuBu")
     return figure
 
 
@@ -80,7 +57,7 @@ def roc_figure(fpr, tpr, area):
 
 
 def pr_figure(precision, recall, area):
-    figure, ax = plt.subplots(figsize=(7, 8))
+    figure, ax = plt.subplots(figsize=(8, 8))
 
     f_scores = np.linspace(0.2, 0.8, num=4)
     _, labels = [], []
