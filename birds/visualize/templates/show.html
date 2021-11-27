@@ -41,7 +41,8 @@
             $.get(protein, function (protein_data) {
                 // console.log(protein_data);
                 viewer.addModel(protein_data, "pdb");
-                viewer.setStyle({}, { cartoon: { color: 'spectrum', opacity: 0.65 } });
+                viewer.addSurface($3Dmol.SurfaceType.MS, {color: 'spectrum', opacity: 0.65});
+                viewer.setStyle({}, { cartoon: { color: 'spectrum', opacity: 0 } });
                 viewer.addStyle({ predicate: myfunc(0), byres: true }, { stick: { color: "green" } })
                 viewer.addStyle({ predicate: myfunc(1), byres: true }, { stick: { color: "blue" } })
                 viewer.addStyle({ predicate: myfunc(2), byres: true }, { stick: { color: "red" } })
