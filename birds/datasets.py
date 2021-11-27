@@ -264,10 +264,12 @@ class scPDB(Dataset):
             _meta["pisc"] = [pisc]
             _meta["mpisc"] = [mpisc]
             _meta["sequence"] = [sequence]
+            inputs = []
 
-            oh = np.array([np.eye(len(AMINO_ACIDS))[AA_DICT[aa]] for aa in sequence]).T
-            pe = np.arange(1, len(sequence) + 1).reshape((1, -1)) / len(sequence)
-            inputs = [oh, pe]
+            if self.hparams.use_ohe:
+                oh = np.array([np.eye(len(AMINO_ACIDS))[AA_DICT[aa]] for aa in sequence]).T
+                pe = np.arange(1, len(sequence) + 1).reshape((1, -1)) / len(sequence)
+                inputs = [oh, pe]
             if self.hparams.use_aap:
                 inputs.append(self.aap[mpisc])
             if self.hparams.use_pssm:
@@ -363,6 +365,15 @@ class scPDB(Dataset):
         )
         parser.add_argument("--no-aap", dest="use_aap", action="store_false")
         parser.set_defaults(use_aap=False)
+
+        parser.add_argument(
+            "--ohe",
+            dest="use_ohe",
+            action="store_true",
+            help="Use One-Hot Encoding in input features for the model. Default: %(default)s",
+        )
+        parser.add_argument("--no-ohe", dest="use_ohe", action="store_false")
+        parser.set_defaults(use_ohe=True)
 
         parser.add_argument(
             "--pssm",

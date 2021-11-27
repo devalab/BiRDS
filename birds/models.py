@@ -122,17 +122,23 @@ class ResNet(torch.nn.Module):
     def __init__(self, input_size, hparams):
         super().__init__()
         assert len(hparams.layers) == len(hparams.hidden_sizes)
-        self.input_size = input_size
-        self.embedding = BERTEmbedding(vocab_size=21, embed_size=hparams.embedding_size)
-        self.resnet_layer = MakeResNet(
-            hparams.layers, hparams.kernel_sizes, input_size - 21 + hparams.embedding_size, hparams.hidden_sizes
-        )
+        self.use_ohe = hparams.use_ohe
+        if hparams.use_ohe:
+            self.input_size = input_size - 21 + hparams.embedding_size
+            self.embedding = BERTEmbedding(vocab_size=21, embed_size=hparams.embedding_size)
+        else:
+            self.input_size = input_size
+        self.resnet_layer = MakeResNet(hparams.layers, hparams.kernel_sizes, self.input_size, hparams.hidden_sizes)
 
     def forward(self, X, lengths, **kwargs):
         # [Batch, input_size, Max_length] -> [Batch, hidden_sizes[-1], Max_length]
-        ohe = X[:, :21].argmax(dim=1)
-        ohe = self.embedding(ohe, segment_label=kwargs["segment_label"])
-        out = torch.cat((ohe.transpose(1, 2), X[:, 21:]), dim=1)
+        if self.use_ohe:
+            ohe = X[:, :21].argmax(dim=1)
+            ohe = self.embedding(ohe, segment_label=kwargs["segment_label"])
+            out = torch.cat((ohe.transpose(1, 2), X[:, 21:]), dim=1)
+        else:
+            out = X
+
         out = self.resnet_layer(out)
         return out
 
