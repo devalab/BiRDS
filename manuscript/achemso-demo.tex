@@ -7,7 +7,7 @@
 
 \graphicspath{ {./resources/} }
 \usepackage{array}
-\usepackage{subfigure}
+\usepackage{subfig}
 \captionsetup[figure]{font=normalsize,skip=0pt}
 \newcolumntype{P}[1]{>{\centering\arraybackslash}p{#1}}
 
@@ -38,96 +38,64 @@
 \end{tocentry}
 
 \begin{abstract}
-    \noindent Protein-drug interactions play important roles in many biological processes and therapeutics. Prediction of the active binding site of a protein helps discover and optimise these interactions leading to the design of better ligand molecules. The tertiary structure of a protein determines the binding sites available to the drug molecule. A quick and accurate prediction of the binding site from sequence alone without utilising the three-dimensional structure is challenging. Deep Learning has been used in a variety of biochemical tasks and has been hugely successful. In this paper, a Residual Neural Network (leveraging skip connections) is implemented to predict a protein's most active binding site. An Annotated Database of Druggable Binding Sites from the Protein DataBank, sc-PDB, is used for training the network. Features extracted from the Multiple Sequence Alignments (MSAs) of the protein generated using DeepMSA, such as Position-Specific Scoring Matrix (PSSM), Secondary Structure (SS3), and Relative Solvent Accessibility (RSA), are provided as input to the network. A weighted binary cross-entropy loss function is used to counter the substantial imbalance in the two classes of binding and non-binding residues. The network performs very well on single-chain proteins, providing a pocket that has good interactions with a ligand.
+    \noindent Protein-drug interactions play important roles in many biological processes and therapeutics. Predicting the binding sites of a protein helps to discover such interactions. New drugs can be designed to optimise these interactions, improving protein function. The tertiary structure of a protein decides the binding sites available to the drug molecule, but the determination of the 3D structure is slow and expensive. Conversely, the determination of the amino acid sequence is swift and economical. Although quick and accurate prediction of the binding site using just the sequence is challenging, the application of Deep Learning, which has been hugely successful in several biochemical tasks, makes it feasible. BiRDS is a Residual Neural Network that predicts the protein's most active binding site using sequence information. SC-PDB, an annotated database of druggable binding sites, is used for training the network. Multiple Sequence Alignments of the proteins in the database are generated using DeepMSA, and features such as Position-Specific Scoring Matrix, Secondary Structure, and Relative Solvent Accessibility are extracted. During training, a weighted binary cross-entropy loss function is used to counter the substantial imbalance in the two classes of binding and non-binding residues. A novel test set SC6K is introduced to compare binding-site prediction methods. BiRDS achieves an AUROC score of 0.87, and the centre of 25\% of its predicted binding sites lie within 4{\AA} of the centre of the actual binding site.
 \end{abstract}
 
 \section{Introduction}
-\quad The rapid speed of sequencing attained with modern DNA sequencing technology has been instrumental in sequencing complete DNA sequences, which leads to faster sequencing of proteins. Although there have been improvements in the determination of the three-dimensional protein structure by techniques such as X-ray Crystallography, NMR Spectroscopy and Cryo-Electron Microscopy, the gap between the number of known protein sequences (214,406,399 UniProt sequences as of May 2021)\cite{10.1093/nar/gkaa1100}, and the number of known structures (177,910 PDBs as of May 2021)\cite{berman2000protein}\cite{burley2021rcsb} is large. Proteins perform a vast array of functions within organisms, and the tertiary structure of a protein can provide important clues about these functions.
+\quad Protein-ligand complexes are functionally important in crucial mechanisms such as DNA replication, metabolism, catalysis, defence against viruses, and signal transduction. A ligand can be any molecule that binds to the protein with high affinity where the interaction site is the active binding site of the protein. In drug design, a new drug is modelled to improve protein function after identifying a potential active binding site, thus aiding in these crucial mechanisms.
 
-In drug design, new drugs are designed based on a biological target such as a protein. Identification of the potential active binding site of a protein is an essential step in drug design. Predicting the binding site of a protein, based on the amino acid sequence is a challenging problem and is helpful to identify potential binding residues before the three-dimensional structure becomes available. Ligand binding site prediction methods can be classified into four groups: 3D structure-based, template similarity-based, traditional machine learning-based and deep learning-based prediction methods.
+Ligand binding site prediction methods are broadly categorised into geometry-based, energy-based, template-similarity-based, traditional machine-learning-based and deep-learning-based prediction methods\cite{zhao2020exploring}. Geometry-based and energy-based methods maintain that most small ligand bindings occur in cavities on protein surfaces since large interfaces have a high affinity to small molecules. These methods locate the binding site by searching for spatial geometry or energy features by placing probes in protein structures. SITEHOUND\cite{hernandez2009sitehound} uses a carbon and phosphate probe inside a grid covering the entire protein. The grid points with higher interaction energies are clustered to determine the binding residues. A spatial geometric measurement method CURPOCKET\cite{liu2020cb} computes the curvature distribution of the protein surface and identifies clusters of concave regions. Other methods in this category include CASTp\cite{dundas2006castp}, LIGSITE\cite{hendlich1997ligsite}, VISCANA\cite{amari2006viscana}, Fpocket\cite{le2009fpocket}, and Patch-Surfer2.0\cite{zhu2015large}. While these methods are widely used, they are invalid in certain cases due to their dependence on various factors, such as the resolution of the structure determination method and the presence of both ligand groups and external molecules.
 
-Three-dimensional structure-based methods assume that most small ligand bindings occur in cavities on protein surfaces because large interfaces have a high affinity. Hence, these methods locate the binding site by searching for spatial geometry or energy features (by placing probes) in protein structures. SITEHOUND \cite{hernandez2009sitehound} uses a carbon and phosphate probe inside a grid that covers the entire protein. The grid points with higher interaction energies are clustered and determine the binding residues. CURPOCKET \cite{liu2020cb} is a spatial geometric measurement method that computes the curvature distribution of the protein surface and identifies clusters of concave regions. Some other methods include CASTp \cite{dundas2006castp}, LIGSITE \cite{hendlich1997ligsite}, VISCANA \cite{amari2006viscana}, Fpocket \cite{le2009fpocket}, Patch-Surfer2.0 \cite{zhu2015large}. While 3D structure-based methods have been widely used, they depend on various factors such as the resolution of the structure determination method, the presence or absence of ligand groups, and external molecules.
+\newpage
+Template-similarity-based methods consider that proteins evolved from structurally, functionally, or sequentially similar proteins, not as independent entities. S-SITE and TM-SITE\cite{yang2013protein} employ the Needleman-Wunsch algorithm to align the query protein to sequentially-similar proteins in the BioLip\cite{yang2012biolip} database, a curated database for biologically relevant ligand-protein binding interactions. The frequently-occurring binding residues in the aligned proteins form the binding residues of the query protein. Methods such as ConSurf\cite{glaser2003consurf}, FINDSITE\cite{brylinski2008threading}, 3DLigandSite\cite{wass20103dligandsite}, FunFOLD\cite{roche2011funfold}, and COFACTOR\cite{roy2012recognizing} also employ similarity searching.
 
-Template similarity-based methods do not consider proteins as independent entities but evolved from structurally, functionally or sequentially similar proteins. S-SITE and TM-SITE \cite{yang2013protein} employ the Needleman-Wunsch algorithm to align the query protein to each of the proteins in the BioLip \cite{yang2012biolip} database and selects similar sequences according to the alignment. The binding residues of the aligned proteins, which occur more frequently, are considered the binding site. Methods such as ConSurf \cite{glaser2003consurf}, FINDSITE \cite{brylinski2008threading}, 3DLigandSite \cite{wass20103dligandsite}, FunFOLD \cite{roche2011funfold}, COFACTOR \cite{roy2012recognizing}, employ template-similarity.
+3D-structure-based and template-similarity-based methods complement each other very well. Traditional machine-learning-based methods build an analytical model based on protein data to identify patterns and structural similarities. Machine learning integrates the information of both the methods and applies mathematical functions to improve prediction accuracy. P2RANK\cite{krivak2015improving}\cite{krivak2018p2rank} uses a random forest algorithm to predict ligandibility scores across the entire protein surface. Ligandibility score is the score given to a ligand for its ability to bind to specific points on the protein. The points with high scores are then clustered into a single binding pocket. SCRIBER\cite{zhang2019scriber} is a fast, sequence-based, two-layer architecture, machine learning predictor which predicts propensities of protein-binding, RNA-binding, DNA-binding, and ligand-binding residues. ConCavity\cite{capra2009predicting}, MetaPocket\cite{huang2009metapocket}, RF-Score\cite{ballester2010machine}, NsitePred\cite{chen2012prediction}, NNSCORE\cite{durrant2010nnscore}\cite{durrant2011nnscore}, LigandRFs\cite{chen2014ligandrfs}, COACH-D\cite{wu2018coach}, and Taba\cite{da2020taba} employ different machine learning models to predict the protein binding site.
 
-Traditional machine learning-based methods build an analytical model based on protein data to identify patterns and structural similarities. 3D structure-based and template similarity-based methods complement each other well. Machine learning is used to integrate the information of both methods and apply mathematical functions to improve prediction accuracy. P2RANK \cite{krivak2015improving} \cite{krivak2018p2rank} uses a random forest algorithm to predict ligandibility scores (the ability of a ligand to bind to specific points on the protein) across the entire protein surface. The points with high scores are then clustered into a single binding pocket. Many methods have started using Machine Learning in the recent past. ConCavity \cite{capra2009predicting}, MetaPocket \cite{huang2009metapocket}, RF-Score \cite{ballester2010machine}, NsitePred \cite{chen2012prediction}, NNSCORE \cite{durrant2010nnscore} \cite{durrant2011nnscore}, LigandRFs \cite{chen2014ligandrfs}, COACH-D \cite{wu2018coach} and Taba \cite{da2020taba} are some of them.
+Deep Learning is a subfield of machine learning based on artificial neural networks with feature learning. When a deep learning network is fed large amounts of data, it can automatically discover the representations needed for feature detection or classification. Deep learning has been hugely successful in the general areas of drug design, such as binding affinity predictions\cite{jimenez2018k,ozturk2018deepdta}, protein contact map predictions\cite{hanson2018accurate,wang2017accurate}, and protein-structure predictions\cite{senior2020improved,li2019ensembling,tiwari2020network}. Deep learning-based methods like DeepSite\cite{jimenez2017deepsite} and Kalasanty\cite{stepniewska2020improving} model binding site prediction as an image processing problem. The protein 3D structure is divided into small grids, called voxels, through a process known as voxelisation. Each voxel's specific calculated properties are used to train a deep convolutional neural network that predicts whether a voxel belongs to a binding site. DeepPocket\cite{aggarwal2021deeppocket} is a structure-based method that uses 3D Convolutional Neural Networks to generate a list of pocket probabilities. A segmentation model then elucidates shapes for the top-ranked pockets.
 
-Deep Learning is a subfield of machine learning based on artificial neural networks with feature learning. When a deep learning network is fed large amounts of data, it can automatically discover the representations needed for feature detection or classification. Deep learning has been hugely successful in the general areas of drug design such as binding affinity predictions\cite{jimenez2018k,ozturk2018deepdta}, protein contact map predictions \cite{hanson2018accurate,wang2017accurate}, and protein-structure predictions\cite{senior2020improved,li2019ensembling,tiwari2020network}. Deep learning-based methods like DeepSite \cite{jimenez2017deepsite}, and Kalasanty \cite{stepniewska2020improving} model binding site prediction as an image processing problem. They voxelize the protein 3D structure into small grids and calculate the specific properties of each grid. These values are then used to train a deep convolutional neural network that predicts whether a grid belongs to a binding site. DeepCSeqSite \cite{cui2019predicting} is a template-based method that uses seven characteristics (position-specific scoring matrix, relative solvent accessibility, secondary structure, dihedral angle, conservation scores, residue type and positional embeddings) of each residue to create a feature map, which is then used as an input to a convolutional neural network. DeepPocket \cite{aggarwal2021deeppocket} is a structure-based method that uses 3D Convolutional Neural Networks to generate a list of pocket probabilities and a segmentation model to elucidate shapes for the top-ranked pockets.
+The tertiary structure of a protein can provide essential clues about the binding sites of a protein. Even though there have been improvements in techniques such as X-ray Crystallography, NMR Spectroscopy, and Cryo-Electron Microscopy, the determination of the three-dimensional protein structure is time-consuming and expensive. Modern DNA sequencing technologies have sped up complete DNA sequencing, and in turn, protein sequencing. The gap between the number of known protein sequences (214,406,399 UniProt sequences as of May 2021)\cite{10.1093/nar/gkaa1100} and the number of known structures (177,910 PDBs as of May 2021)\cite{berman2000protein}\cite{burley2021rcsb} is enormous. Predicting the binding site based on amino acid sequence alone is challenging. However, it helps to identify potential binding residues before the three-dimensional structure becomes available.
 
-In this paper, a deep residual neural network (ResNet)\cite{he2016deep} is trained to make the binary prediction of whether an amino acid residue of the sequence belongs to the primary binding site or not (BiRDS). The Multiple Sequence Alignment (MSA) of the protein sequence is calculated, and the feature map is extracted from the MSAs. BiRDS is trained on the feature map of all proteins in the training dataset, using a weighted binary cross-entropy loss. The network outputs the final probabilities, which are converted to binary outputs. The network does very well in recognising the binding sites of individual protein chains.
+In this paper, a deep residual neural network (ResNet)\cite{he2016deep} is trained to predict whether an amino acid residue in the sequence belongs to the most active binding site or not. The sc-PDB database identifies this site as the binding site most suitable for docking a drug-like ligand. Features are extracted from the MSAs generated by DeepMSA\cite{zhang2020deepmsa}, whose robustness and usefulness have been studied extensively. BiRDS is trained on these features for all proteins in the training dataset. A weighted binary cross-entropy loss function is used for handling the severe class imbalance. The network outputs the final probabilities, which are converted to binary outputs. Most sequence-based prediction methods predict the binding site of a protein for specific ligands, while most popular 3D structure-based methods predict the ligandable binding sites of a protein. This paper bridges the gap between the two by providing a reliable method for predicting a protein's most active binding site from sequence information alone. SC6K, a novel test set, is used for comparing BiRDS with Kalasanty (a 3D structure-based method) and SCRIBER (a sequence-based method).
 
 \section{Methods}
 \subsection{Dataset}
-\quad For the training and validation of the model, the sc-PDB\cite{desaphy2015sc} dataset (v. 2017) is used. The database takes samples from the Protein Data bank\cite{berman2000protein,berman2003announcing} and creates prepared protein structures and the most ligandable binding site. Thus each sample in the dataset contains the three-dimensional structure of one ligand, one protein, and one site, all stored in mol2 format.
+\quad An annotated database of druggable binding sites from the Protein Data Bank, known as sc-PDB (v.2017)\cite{desaphy2015sc}, is used to train and validate BiRDS. The database takes samples from the Protein Data Bank\cite{berman2000protein,berman2003announcing}, creates prepared protein structures of biologically relevant protein-ligand complexes by filtering based on Uniprot annotations and prepared ligand templates. The most buried ligand, peptide or cofactor is found in the prepared structure, and the site of interaction is considered the most ligandable binding site. Thus each sample in the dataset contains the three-dimensional structure of one ligand, one protein, and one site.
 
-\newpage
-Typically, the complete structure of a protein is unavailable due to missing residues, and hence the entire sequence of the protein is obtained from RCSB \cite{burley2021rcsb} website\footnote{Some PDBs in the dataset were obsoleted, and hence the sequences were manually tracked on RCSB, and the corresponding sequences were used. A list of obsoleted PDBs is provided in Supporting information}. A one-to-one mapping of the amino acids in the sequence to the amino acids in the protein mol2 file is required to know which amino acid belongs to a binding site. This mapping is done by first extracting the protein sequence from the 3D structure. Next, the Needleman-Wunsch dynamic programming algorithm\cite{needleman1970general} is used to align the sequence extracted from the structure file to the downloaded RCSB sequence. This algorithm is implemented using a modified version of Zhanglab's NW-Align program\cite{NWAlign}. The protein structure file is then reindexed, based on this alignment, to match the indexing of the RCSB sequence. This way, the specific binding residues can be labelled in the RCSB sequence.
+The sc-PDB (v.2017) database is generally used to predict binding sites based on the available protein-ligand 3D structures. However, this paper deals with predicting the most active binding site using sequence information alone, for which the complete amino acid sequence of all the protein chains is required. The complete 3D structure is typically unavailable because some of the protein regions in the crystal under study are disordered and mobile. Hence the whole sequence cannot be extracted from the structure. Fortunately, the entire protein sequence is always available, and for this paper, it has been downloaded from the RCSB\cite{burley2021rcsb} website in FASTA file format\footnote{Some obsolete PDBs were manually tracked on RCSB, and the new PDBs that had supplanted the obsoleted PDBs were used. A list of obsoleted PDBs is provided in Supporting information}. A one-to-one mapping of the amino acids in the downloaded sequence to the amino acids in the protein's 3D structure is required to know which amino acid is a binding residue. This mapping is done by first extracting the protein sequence from the 3D structure. Next, the Needleman-Wunsch dynamic programming algorithm\cite{needleman1970general} (implemented by Zhanglab's NW-Align program\cite{NWAlign}) is utilised to align the sequence extracted from the structure file to the downloaded sequence. The protein structure file is reindexed based on this alignment to match the indices of the residues in the downloaded sequence. This reindexing allows for the labelling of binding residues in the downloaded sequence. Note that the protein sequence is the concatenation of all its chain sequences.
 
+The training set consists of the downloaded sequence and the generated binding residue labels of every protein in the sc-PDB database, which has 17,594 PDB structures with 28,959 chain sequences, of which 9,419 are unique. For training using k-fold cross-validation, we must ensure that no two folds have proteins with sequence similarity greater than 25\% to avoid data leakage between the training and validation set during network training. Hence, the pairwise sequence similarity of the 9,419 unique chain sequences was calculated using BLASTP (part of the BLAST$^+$\cite{camacho2009blast+} package from NCBI). SiLiX\cite{miele2011ultra} package clustered these unique sequences into families with greater than 25\% sequence similarity and over 80\% overlap, leading to the creation of 2,039 clusters of chain sequences. Since BiRDS predicts the most active binding site of the complete protein, the protein sequence must also be clustered. The Union-Find algorithm\cite{kozen1992union} using a disjoint-set data structure was employed to make this clustering, where all the chains of a protein and their corresponding cluster were put in a single set, creating 1,744 sets. Protein sequences longer than 4,096 residues were removed. An equal sum K-partition algorithm put these sets into ten folds for cross-validation. One set had 2,009 proteins and was reduced to 1,642 to split the sets into ten even folds. Finally, this gave 16,450 proteins belonging to the training set, with each fold containing 1,645 proteins.
 
-The training set consists of 17,594 PDB structures with 28,959 sequences (9419 unique sequences), originating from 1240 organisms, with the most abundant being humans(28.26\%). The dataset was diverse and contained proteins from 1996 different PFAM families and 856 PFAM clans.
+A separate test set SC6K was constructed using the PDB structures from January 2018 to February 2020. All PDBs with at least one ligand were run through pdbconv program from the IChem Toolkit\cite{da2018ichem}. The program used the exact filtering mechanism and site selection method as the sc-PDB\cite{desaphy2015sc} database. The entire test set consists of 2,274 PDB structures with 3,434 chain sequences, of which 1,889 are unique. However, there should be no data leakage between the test and training sets. Hence, the pairwise sequence similarity of the 1,889 test chain sequences with the 9,419 training chain sequences was calculated using BLASTP. Sequences with greater than 25\% similarity and over 80\% overlap were removed from the test set, giving a set of 576 chain sequences. Proteins with all their chain sequences in this set were considered for the reduced test set, leading to a final count of 530 protein sequences.
 
-\begin{table}
-    \centering
-    \begin{tabular}{| P{2.75cm} | P{2.75cm} | P{2.75cm} | P{2.75cm} | P{2.75cm} |}
-        \hline
-              & $N_{prot}$ & $N_{br}$ & $N_{nbr}$ & $P_{br}(\%)$ \\
-        \hline
-        Train & 15,860     & 589,329  & 8,725,043 & 6.33         \\
-        % Valid & 1586       &          &           &              \\
-        Test  & 2,464      & 86,230   & 1,345,646 & 6.02         \\
-        \hline
-    \end{tabular}
-    \caption{\label{tab:dataset_summary} Summary of the dataset used for training and testing}
-    \vspace{5 mm}
-    \noindent $N_{prot}$ - Number of proteins \hfill $N_{br}$ - Total number of binding residues
+\subsubsection{MSA Generation}
+\label{msa_generation}
+\quad Collections of multiple homologous sequences (called Multiple Sequence Alignments or MSAs) can provide critical information for modelling the structure and function of unknown proteins. DeepMSA\cite{zhang2020deepmsa} is an open-source method for sensitive MSA construction, which has homologous sequences and alignments created from multiple sources of databases through complementary hidden Markov model algorithms. DeepMSA profiles provided statistically significant improvements in residue-level contact prediction, homologous structure identification and secondary structure prediction. These improvements were achieved without retraining the parameters and neural-network models.
 
-    \vspace{3 mm}
-
-    \noindent $N_{nbr}$ - Total number of non-binding residues \hfill $P_{br}(\%)$ - Percentage of binding residues
-\end{table}
-
-This data is split into 10-folds (each containing 1586 structures), based on Uniprot ID, precisely like how \citeauthor{stepniewska2020improving} did in their study \cite{stepniewska2020improving}. This split ensures no data leakage between the validation and training set by putting all structures of a single protein in the same fold.
-
-A separate test set, SC6K, is constructed using all PDBs from 2018 onwards, till 28th February 2020. All PDBs having at least one ligand, during this period, are run through pdbconv from the IChem Toolkit \cite{da2018ichem} to generate a dataset with the same filters and site selection as sc-PDB\cite{desaphy2015sc}. The test set consists of 2,274 PDB structures with 3,434 sequences (1889 unique sequences), originating from 548 organisms, with the most abundant being humans (23.76\%). The test set contained proteins from 882 PFAM families and 452 PFAM clans.
+The search for alignments is done in 2 stages. In stage 1, the query sequence is searched against the UniClust30\cite{mirdita2017uniclust} database using HHBlits from HH-suite\cite{remmert2012hhblits} (v2.0.16). If the number of effective sequences is $<$ 128, Stage 2 is performed where the query sequence is searched against the Uniref50\cite{suzek2015uniref} database using JackHMMER from HMMER\cite{johnson2010hidden} (v3.1b2). Full-length sequences are extracted from the JackHMMER raw hits and converted into a custom HHBlits format database. HHBlits is applied to jump-start the search from the Stage 1 sequence MSAs against this custom database.
 
 \subsection{Features}
-\quad There are 9519 unique protein sequences in the sc-PDB\cite{desaphy2015sc} dataset and 1889 unique protein sequences in the test set. The MSAs are generated for these sequences using the method described below and stored in PSICOV \cite{jones2012psicov} .aln format. The features are similar to the ones used by DeepCSeqSite\cite{cui2019predicting} and are commonly used in sequence-based predictions: One-hot encoding and Positional embeddings are extracted from the sequence alone. Position Specific Scoring Matrix, Information Content, Secondary Structure and Solvent Accessibility are extracted from the generated high-quality MSAs.
+\quad The MSAs were generated for the unique chain sequences in the training(9,419), and test(1,889) sets using the method described in \nameref{msa_generation} and stored in PSICOV\cite{jones2012psicov} .aln format. The most commonly used features in sequence-based predictions were used. Token embeddings, Positional embeddings, and Segment embeddings were extracted from the sequence, while Position Specific Scoring Matrix, Information Content, Secondary Structure, and Solvent Accessibility were extracted from the generated, high-quality MSAs. The process for creating the feature map is shown in Figure \ref{fig:feature_map}
 
 \begin{figure}
     \centering
-    \noindent\includegraphics[scale=0.6]{feature_map}
-    \caption{\centering Process used for generating the feature map of BiRDS framework. The MSAs of the individual chains of a protein are generated using DeepMSA, which are used to generate the features of the protein chains. These features are concatenated to form the feature map}
+    \noindent\includegraphics[width=0.8\textwidth]{feature_map}
+    \caption{\centering The process used for generating the feature map of BiRDS framework. Token, positional and segment embeddings are generated using just the sequence information. The features extracted from the MSAs of the individual protein chains created using DeepMSA, are concatenated to form the protein feature map}
     \label{fig:feature_map}
 \end{figure}
 
-\subsubsection{MSA Generation}
-\quad Collections of multiple homologous sequences (called Multiple Sequence Alignments or MSAs) can provide critical information for modelling the structure and function of unknown proteins. DeepMSA \cite{zhang2020deepmsa} is an open-source method for sensitive MSA construction, which has homologous sequences and alignments created from multiple sources of databases through complementary hidden Markov model algorithms.
+\subsubsection{Token Embedding, Positional Embedding and Segment Embedding}
+\quad There are 21 amino acids in the protein vocabulary of BiRDS, with the 20 standard amino acids labelled in alphabetical order from 1 to 20 and X, representing all non-standard amino acids, labelled as 0. Token embeddings help the model differentiate between the different types of amino acids. It is generated by an Encoding layer that uses the vocabulary label of each amino acid in the sequence. Positional Embeddings (PE) carry information about the absolute position of the amino acids in the sequence. Using the positional encoding layer of a Transformer network\cite{vaswani2017attention}, these embeddings were unique for each position and generalised to long sequences without extra effort. A segment embedding was generated by using the chain number to which an amino acid belongs, to allow the model to differentiate between the multiple chains of a protein.
 
-The search is done in 2 stages. In stage 1, the query sequence is searched against the UniClust30 \cite{mirdita2017uniclust} database using HHBlits from HH-suite\cite{remmert2012hhblits} (v2.0.16). If the number of effective sequences is $<$ 128, Stage 2 is performed where the query sequence is searched against the Uniref50 \cite{suzek2015uniref} database using JackHMMER from HMMER \cite{johnson2010hidden} (v3.1b2). Full-length sequences are extracted from the JackHMMER raw hits and converted into a custom HHBlits format database. HHBlits is applied to jump-start the search from Stage 1 sequence MSA against this custom database.
-
-\subsubsection{One-Hot Encoding and Positional Embeddings}
-\quad There are 21 amino acids in the vocabulary, 20 standard (labelled in alphabetical order from 1 to 20), and X (labelled 0, representing non-standard amino acids). The one-hot encoding (OHE) of an amino acid will be a vector of zeroes of length 21, where the position of the amino acid in the vocabulary is marked with a one. OHE is used to help the model differentiate between the different types of amino acids. Positional Embeddings (PE) carry information about the absolute position of the amino acids in the sequence. A simple method of embedding is used where the position of the $j^{th}$ amino acid is represented by ${PE}_{j} = \frac{j}{l_i}$, where $l_i$ is the length of the $i^{th}$ chain of the protein.
-
-\newpage
-\subsubsection{Position Specific Scoring Matrix and Information Content}
-\quad Position Specific Scoring Matrix (PSSM) is a commonly used representation of patterns in biological sequences. PSSMs are derived from MSAs using Easel \cite{potter2018hmmer} and Heinikoff position-based weights so that similar sequences collectively contributed less to PSSM probabilities than diverse sequences. The information content (IC) of a PSSM gives an idea about how different the PSSM is from a uniform distribution. IC is also derived using Easel.
+\subsubsection{Position-Specific Scoring Matrix and Information Content}
+\quad Position-Specific Scoring Matrix (PSSM) is a commonly used representation of patterns in biological sequences, derived as the log-likelihood of the probability that a particular amino acid occurs at a specific position. The PSSMs were derived from MSAs using Easel\cite{potter2018hmmer} and Heinikoff position-based weights so that similar sequences collectively contributed less to PSSM probabilities than diverse sequences. The information content (IC) of a PSSM gives an idea about how different the PSSM is from a uniform distribution. IC was also derived using Easel.
 
 \subsubsection{Secondary Structure and Solvent Accessibility}
-\quad The secondary structure is defined by the pattern of hydrogen bonds formed between the amino hydrogen and carboxyl oxygen atoms in the peptide backbone. It gives an idea of the three-dimensional structure of the protein. The secondary structural elements are alpha helices, beta sheets and turns. PSIPRED (v4.0) \cite{jones1999protein} is used to predict the probability of each state of the 3-state secondary structure (SS3) for every amino acid in the sequence. The solvent-accessible surface area is the surface area of a biomolecule that is accessible to a solvent. SOLVPRED from MetaPSICOV 2.0\cite{jones2015metapsicov} is used to predict the relative solvent accessibility (RSA) of every amino acid in the sequence. RSA can be calculated as \\ ${RSA} = {ASA} / {MaxASA}$, where ASA is the solvent-accessible surface area, and MaxASA is the maximum possible solvent accessible surface area for the amino acid residue.
-
-% \subsubsection{SPOT-1D Features}
-% \quad As a means to provide better features, SPOT-1D \cite{hanson2019improving} was used to generate the following features: solvent accessibility, half-sphere exposure, contact number, 3-state secondary structure, 8-state secondary structure, and phi, psi, theta and tau torsion angles.
-
-% The first step in the prediction pipeline was to get the ASCII PSSM file in PSI-BLAST format. Then, hhmake was used to generate the HHM file from the MSA. SPIDER3, DCA and CCMPRED predictions were made and stored.
-
-% The second step was to predict the contact map using SPOT-Contact, which used the previous steps predictions.
-
-% Finally, SPOT-1D was used to make the final predictions using all the previous files as input.
-% (Need to write in more detail)
+\quad The secondary structure is defined by the pattern of hydrogen bonds formed between the amino hydrogen and carboxyl oxygen atoms in the peptide backbone. It gives an idea of the three-dimensional structure of the protein. The secondary structural elements are alpha helices, beta sheets and turns. PSIPRED (v4.0)\cite{jones1999protein} was used to predict the probability of each state of the 3-state secondary structure (SS3) for every amino acid in the sequence. The solvent-accessible surface area is the surface area of a biomolecule accessible to a solvent. SOLVPRED from MetaPSICOV 2.0\cite{jones2015metapsicov} was used to predict the every amino acid's relative solvent accessibility (RSA). RSA can be calculated as \\ ${RSA} = {ASA} / {MaxASA}$, where ASA is the solvent-accessible surface area, and MaxASA is the maximum possible solvent accessible surface area for the amino acid residue.
 
 \subsection{Model}
 \subsubsection{BiRDS Architecture}
-\quad A Convolutional Neural Network (CNN) is a Deep Learning algorithm that can take an image as input, assign importance (learnable weights and biases) to various aspects/objects in the image, and differentiate one from the other. When multiple CNN layers are stacked on top of each other, Deep Neural Networks (DNNs) are formed. DNNs are difficult to train because of the vanishing gradient problem where the gradients become so small that the network's weights do not change, preventing further training. With the introduction of skip connections (shortcuts to jump over some layers) in CNNs, the vanishing gradient problem is avoided. CNNs with skip connections are known as Residual Neural Networks or ResNets\cite{he2016deep}. ResNets use representation learning to extract the most important features for classification. They can also model long-range interactions very well and hence have been very successful in the field of Computational Natural Sciences \cite{senior2020improved}.  The architecture of the deep Residual Neural Network used here is shown in Figure \ref{fig:architecture}.
+\label{birds_architecture}
+\quad A Convolutional Neural Network (CNN) is a Deep Learning algorithm that can take an image as input, assign importance (learnable weights and biases) to various aspects/objects in the image, and differentiate one from the other. When multiple CNN layers are stacked on top of each other, Deep Neural Networks (DNNs) are formed. DNNs are challenging to train because of the vanishing gradient problem where the gradients become so small that the network's weights do not change, preventing further training. With the introduction of skip connections (shortcuts to jump over some layers) in CNNs, the vanishing gradient problem is avoided. CNNs with skip connections are known as Residual Neural Networks or ResNets\cite{he2016deep}. ResNets use representation learning to extract the most important features for classification. They can also model long-range interactions and have been hugely successful in Computational Natural Sciences\cite{senior2020improved}. The architecture of the deep Residual Neural Network used here is shown in Figure \ref{fig:architecture}.
 
 Each sample protein in the dataset consists of one or more protein sequences. Let the length of the sequences be $l_1, ..., l_n$. Features are generated for each sequence in the protein (ordered by chain ID in PDB), leading to multiple vectors of shape $[l_i, 47]$ for the $i^{th}$ sequence. These generated features are combined through simple concatenation, giving a final feature vector of shape $[L, 47]$ as input to the model, where $L = l_1 + ... + l_n$.
 
@@ -138,143 +106,137 @@ Each sample protein in the dataset consists of one or more protein sequences. Le
     \label{fig:architecture}
 \end{figure}
 
-The feature vector is passed through the first level, consisting of a 1D convolutional layer with 128 filters, each filter size being 7, a batch normalisation layer and the ReLU (Rectified Linear Unit) activation function. The input is padded with zeroes to ensure that the length of the output vector remains the same. The filters of the convolution layer stride across the length of the protein, considering the features of the three amino acids before, the three amino acids after and the current amino acid (totalling 7). This stride along the input allows for the extraction of the required information of the current amino acid based on the features of nearby amino acids.
+\newpage
+The feature vector is passed through the first level, consisting of a 1D convolutional layer with 128 filters of size 7, batch normalisation layer and ReLU (Rectified Linear Unit) activation function. The input is padded with zeroes to ensure that the length of the output vector remains the same. The filters of this layer stride along the length of the protein, considering the features of the three prior amino acids, the current amino acid, and the three subsequent amino acids (totalling 7). This stride allows for the extraction of the required information of the current amino acid based on the features of nearby amino acids.
 
-The following few levels consist of 2 blocks called BasicBlocks. A BasicBlock consists of a 1D convolutional layer, a batch normalisation layer, a ReLU activation function, a second 1D convolutional layer, a second batch normalisation layer, and a final ReLU activation. The skip connection is made after the final ReLU activation, where the initial input to the BasicBlock is added to the output of the final ReLU activation. Usually, the input and output size of the first BasicBlock do not match, and hence there is an up/down-sampling layer that ensures that the input has the same shape as that of the output. The output from the previous level passes through the first BasicBlock, which has an up/down-sampling layer and then goes through the second BasicBlock. In the proposed architecture, the number of filters used at each level goes from $128 \to 256 \to 128 \to 64 \to 32$, with the filter size being 5 for every convolution.
+The following five levels contain an up(down)sampling layer and two basic blocks. A basic block consists of a 1D convolutional layer, a batch normalisation layer, a ReLU activation function, a second 1D convolutional layer, a second batch normalisation layer, and a final ReLU activation function. The ResNet skip connection is made after the final ReLU activation, where the initial input to the first basic block is added to the output of the final ReLU activation. Usually, the input received by the first basic block will not match its required input size. Hence, an up(down)sampling layer ensures that the input to the first block has the required shape. The output of size $L \times d$ from the first level runs through $e$ filters of size $1 \times d$ of the up(down)sampling layer to generate a vector of size $L \times e$. This vector is passed to the first basic block, which follows a similar stride policy as the first level but with a window size of 5. The process is repeated with the second basic block, and its output is sent back to the up(down)sampling layer. This process is repeated five times, with $d$ going from $128 \to 128 \to 256 \to 128 \to 64$ and $e$ going from $128 \to 256 \to 128 \to 64 \to 32$. The multiple levels capture the long-range dependencies of amino acids since the filters help propagate information of one amino acid through its neighbours.
 
-The last two levels contain a simple, linear, fully connected artificial neural network. The last but one level has a LeakyReLU activation function along with a dropout as well. The last level has a Sigmoid function to ensure that the model's output is between $[0, 1]$. The final output of the model is a vector of size $L$ (length of the protein), denoting the probabilities of a residue being a part of the binding site.
+The last two levels contain simple, linear, fully connected artificial neural networks. The penultimate level has a LeakyReLU activation function with dropout to prevent sparse gradients. A sigmoid function at the end ensures that the model outputs values between $[0, 1]$, resulting in a vector of size $L$ (length of the protein), denoting the probabilities of a residue being a part of the binding site.
 
 \subsubsection{Loss Function}
-\quad For model training, the loss function is a weighted binary cross-entropy and is given by
-$L(\hat{y}, y) = -(\alpha\hat{y}\log(y) + (1-\hat{y})\log(1-y))$, where $\hat{y}$ is the vector of true labels of whether an amino acid belongs to the binding site or not, $y$ is the model output of probabilities of a residue belonging to a binding site, $\alpha$ is the weight that is assigned to the rare class.
+\quad There is a substantial imbalance in the two classes of binding and non-binding residues in this classification problem, where the percentage of binding residues is only 6\%. Hence, a weighted binary cross-entropy loss function was used to train the model.
+$$L(\hat{y}, y) = -(\alpha\hat{y}\log(y) + (1-\hat{y})\log(1-y))$$ \quad$\hat{y}$ is the vector of true labels, $y$ is the model output probabilities, and $\alpha$ is the weight assigned to the rare class.
 
-\newpage
-The main problem in this classification task is the substantial imbalance in the two classes of binding and non-binding residues. As shown in Table \ref{tab:dataset_summary}, the percentage of binding residues is only around 6\%. Hence, $\alpha$ is used to penalise the model more heavily if it incorrectly predicts binding residues. $\alpha$ is calculated on the fly for every batch of inputs as $\alpha = \frac{n_{nbr}}{n_{br}}$, where $n_{nbr}$ is the total number of non-binding residues in the batch and $n_{br}$ is the total number of binding residues in the batch.
+$\alpha$ heavily penalises the model if it incorrectly predicts binding residues as non-binding. $\alpha$ is calculated on the fly for every batch of inputs using $\alpha = \frac{n_{nbr}}{n_{br}}$, where $n_{nbr}$ is the total number of non-binding residues in the batch and $n_{br}$ is the total number of binding residues in the batch.
 
-\subsection{Implementation}
-\quad The model is implemented using PyTorch Lightning \cite{falcon2019pytorch}, which is a wrapper on the popular open-source deep-learning library, PyTorch \cite{paszke2019pytorch}. The model is trained in batches using an Adam Optimizer with the ReduceLROnPlateau scheduler, maximising the MCC on the validation set. A learning rate warm-up is used, where the learning rate is gradually increased to the actual learning rate during the first epoch. The implementation can be found at \href{https://github.com/devalab/BiRDS}{https://github.com/devalab/BiRDS}.
+\subsubsection{Implementation}
+\quad The model is implemented using PyTorch Lightning\cite{falcon2019pytorch}, a wrapper on the popular open-source deep-learning library, PyTorch\cite{paszke2019pytorch}. The model is trained in batches using an Adam Optimiser with the ReduceLROnPlateau scheduler and a learning rate warm-up where the learning rate is gradually increased to the actual learning rate. The implementation can be found at \href{https://github.com/devalab/BiRDS}{https://github.com/devalab/BiRDS}.
 
 \section{Results and Discussion}
-\quad The sc-PDB\cite{desaphy2015sc} dataset was split into ten folds, and ten models with the same architecture were trained. One fold formed the validation set, and the remaining folds
-formed the training set for each of the models. The validation results are provided in Table \ref{tab:results}, along with the confusion matrix in Figure \ref{fig:valid_cm}
-
-% TODO: Include DCC and MCC definitions here
+\quad Ten models with the architecture described in \nameref{birds_architecture} were trained through ten-fold cross-validation, where one fold formed the validation set while the remaining folds formed the training set in each iteration. The validation results are provided in Table \ref{tab:results} and the sum of confusion matrices in Figure \ref{fig:valid_cm}. The Receiver Operating Characteristics (ROC) curve and the Precision-Recall (PR) curve of the models on their validation sets is provided in Figure \ref{fig:valid_roc_prc}. The description of the various metrics is provided in Supplementary Information.
 
 \begin{table}
     \centering
-    \begin{tabular}{| P{2cm} | P{2cm} | P{2cm} | P{2cm} | P{2cm} | P{2cm} |}
+    \begin{tabular}{| P{2.9cm} | P{1.75cm} | P{1.75cm} | P{1.75cm} | P{1.75cm} | P{1.75cm} | P{1.75cm} |}
         \hline
-        Dataset & ACC(\%) & PPV(\%) & TPR(\%) & F1(\%) & MCC(\%) \\
+        Dataset        & MCC   & ACC   & F1    & IoU   & PPV   & TPR   \\
         \hline
-        Fold 1  & 92.58   & 48.64   & 70.65   & 57.62  & 54.83   \\
-        Fold 2  & 92.18   & 46.80   & 67.29   & 55.20  & 52.08   \\
-        Fold 3  & 92.94   & 44.85   & 69.37   & 54.48  & 52.27   \\
-        Fold 4  & 91.28   & 39.62   & 65.73   & 49.44  & 46.72   \\
-        Fold 5  & 91.74   & 46.33   & 73.11   & 56.72  & 54.07   \\
-        Fold 6  & 92.19   & 47.16   & 69.70   & 56.25  & 53.34   \\
-        Fold 7  & 91.90   & 45.45   & 69.55   & 54.98  & 52.13   \\
-        Fold 8  & 92.52   & 47.58   & 68.16   & 56.04  & 53.10   \\
-        Fold 9  & 92.06   & 41.86   & 69.69   & 52.31  & 50.14   \\
-        Fold 10 & 92.08   & 44.54   & 68.88   & 54.10  & 51.41   \\
-        Test    & 94.05   & 50.46   & 67.45   & 57.73  & 55.27   \\
+        Fold 1         & 0.354 & 0.920 & 0.394 & 0.582 & 0.359 & 0.437 \\
+        Fold 2         & 0.606 & 0.931 & 0.633 & 0.695 & 0.545 & 0.755 \\
+        Fold 3         & 0.521 & 0.896 & 0.565 & 0.641 & 0.474 & 0.700 \\
+        Fold 4         & 0.270 & 0.898 & 0.323 & 0.544 & 0.296 & 0.355 \\
+        Fold 5         & 0.324 & 0.892 & 0.367 & 0.556 & 0.293 & 0.490 \\
+        Fold 6         & 0.338 & 0.884 & 0.373 & 0.555 & 0.282 & 0.550 \\
+        Fold 7         & 0.324 & 0.902 & 0.368 & 0.562 & 0.309 & 0.456 \\
+        Fold 8         & 0.340 & 0.924 & 0.380 & 0.578 & 0.355 & 0.407 \\
+        Fold 9         & 0.380 & 0.918 & 0.421 & 0.591 & 0.378 & 0.475 \\
+        Fold 10        & 0.355 & 0.917 & 0.391 & 0.579 & 0.332 & 0.476 \\
+        Test (Full)    & 0.568 & 0.940 & 0.589 & 0.677 & 0.502 & 0.713 \\
+        Test (Reduced) & 0.440 & 0.951 & 0.464 & 0.626 & 0.497 & 0.436 \\
         \hline
     \end{tabular}
-    \caption{\label{tab:results} Validation results of all 10 trained models and test results}
+    \caption{\label{tab:results} Validation and test results}
 \end{table}
 
-\begin{figure}
+\newpage
+The model predictions were also mapped back to the available 3D structures of proteins for DCC calculation. DCC is the distance between the centre of the predicted binding pocket and the centre of the actual binding pocket. It is commonly used for evaluating 3D-structure based models. The success rate of DCC is defined as the fraction of predictions below a given threshold. Pockets with DCC below 4{\AA} are considered to be correctly predicted. Figure \ref{fig:valid_dcc} denotes the success rate plot of the models' predictions on their validation set for various thresholds of the DCC metric. The success rate ranges from 15\% to 75\% when the threshold is 4{\AA}. Fold 2 and Fold 3 models performed well on their validation sets since they contained only 1 to 5 protein families with similar sequence patterns. The presence of only a few families in these folds is due to the equal sum partition algorithm used to create these folds. It is a greedy algorithm that combines as many large clusters as possible, thus causing large families to appear in a single fold.
+
+\begin{figure}%
     \centering
-    \noindent\includegraphics[scale=0.4]{valid_cm.png}
-    \caption{\centering Sum of confusion matrices of the 10 models on their corresponding validation set}
-    \label{fig:valid_cm}
+    \subfloat[\centering Sum of confusion matrices]{{ \noindent\includegraphics[width=0.45\textwidth]{valid_cm.png} \label{fig:valid_cm}}}%
+    \subfloat[\centering Success rate plot for various DCC thresholds]{{ \noindent\includegraphics[width=0.55\textwidth]{valid_dcc.png} \label{fig:valid_dcc}}}%
+    \vspace{1em}
+    \caption{\centering Results of the ten models on their corresponding validation sets}%
+    \label{fig:valid_results}%
+\end{figure}
+
+\begin{figure}%
+    \centering
+    \subfloat{{ \noindent\includegraphics[width=0.52\textwidth]{valid_roc.png} \label{fig:valid_roc}}}%
+    \subfloat{{ \noindent\includegraphics[width=0.52\textwidth]{valid_prc.png} \label{fig:valid_prc}}}%
+    \vspace{1em}
+    \caption{\centering ROC and PR curves of the ten models on their corresponding validation sets }%
+    \label{fig:valid_roc_prc}%
+\end{figure}
+
+The ten trained models are run on the full and reduced test sets for testing. The models come to a consensus if five or more models predict a residue as belonging to the most active binding site of the proteins in a set. The test results, both full and reduced, are provided in Table \ref{tab:results} and the confusion matrices in Figure \ref{fig:test_cm}.
+
+\begin{figure}%
+    \centering
+    \subfloat[\centering Reduced test set]{{ \label{fig:test_reduced_cm} \includegraphics[width=0.45\textwidth]{test_reduced_cm.png} }}%
+    \subfloat[\centering Full test set]{{ \label{fig:test_full_cm} \includegraphics[width=0.45\textwidth]{test_full_cm.png} }}%
+    \vspace{1em}
+    \caption{\centering Confusion matrix on the test sets after consensus among models}%
+    \label{fig:test_cm}%
 \end{figure}
 
 \newpage
-For testing, the ten trained models are run on the test set. An amino acid belongs to the binding site for the consensus algorithm if five or more models predict the same. The test results are also provided in Table \ref{tab:results}, along with the confusion matrix in Figure \ref{fig:test_cm}
+The performance of BiRDS on the novel SC6K test set was compared against Kalasanty\cite{stepniewska2020improving} and SCRIBER\cite{zhang2019scriber}. Kalasanty is a 3D-structure-based method that uses a U-Net architecture\cite{ronneberger2015u} capable of protein binding site segmentation. The full test set was run on Kalasanty using their open-source code, and the DCC metric was calculated for the predicted pocket. The success rate plot of DCC is shown in Figure \ref{fig:test_dcc}. BiRDS performs on par with Kalasanty on the full test set, which will have a lot of sequences similar to the training data. However, the performance on the reduced test set shows Kalasanty outperforming BiRDS. Nevertheless, BiRDS still performs well on the reduced test set for a sequence-based predictor, achieving a success rate of 25\% at a 4{\AA} cutoff for DCC. In other words, for 25\% of the test data, the model has predicted the binding site such that the centre of the predicted binding site is within 4{\AA} of the centre of the most ligandable binding site. As the threshold of DCC increases, the success rate also naturally increases. It should be noted that if the model predicts the whole binding site correctly and misses out on a couple of residues or predicts more residues, the centre of the predicted binding site may shift significantly.
 
 \begin{figure}
     \centering
-    \noindent\includegraphics[scale=0.4]{test_cm.png}
-    \caption{\centering Confusion matrix on the test set after averaging the predictions of the 10 models}
-    \label{fig:test_cm}
-\end{figure}
-
-The model predictions were mapped back to the available 3D structures of proteins for the calculation of DCC. Figure \ref{fig:valid_dcc} denotes the cross-validation results. The deep learning model is the same across all ten splits of training and validation datasets. The success rate of the models varies based on the fold that is used for validation. It ranges from 33\% to 49\% success rate when the DCC threshold is less than 4\AA. Figure \ref{fig:test_dcc} denotes the test result. The predictions have a 40\% success rate when the DCC threshold is less than 4\AA, meaning that for 40\% of the test data, the model has predicted the binding site such that the centre of the predicted binding site is within 4\AA \ of the centre of the true binding site. As the threshold of DCC increases, the success rate also naturally increases. One should note that even if the model predicts the whole binding site correctly and misses out on a couple of residues or predicts more residues, the centre of the predicted binding site will change significantly.
-
-\begin{figure}
-    \centering
-    \noindent\includegraphics[scale=0.45]{valid_dcc.png}
-    \caption{\centering Success rate plot for various DCC thresholds of the 10 models on their corresponding validation set}
-    \label{fig:valid_dcc}
-\end{figure}
-
-\begin{figure}
-    \centering
-    \noindent\includegraphics[scale=0.45]{test_dcc.png}
+    \noindent\includegraphics[width=0.6\textwidth]{test_dcc.png}
     \caption{\centering Success rate plot for various DCC thresholds on the test set after averaging the predictions of the 10 models}
     \label{fig:test_dcc}
 \end{figure}
 
-On their test set, DeepSite, a 3D structure-based deep learning model \cite{jimenez2017deepsite} achieved around 40\% success rate. Given that our model uses only the amino acid sequence information, its performance is commendable. Even though the test sets are not the same, it still gives an idea of how well the current model performs.
+SCRIBER is a sequence-based, two-layer architecture, machine learning predictor which predicts propensities of protein-binding, RNA-binding, DNA-binding, and ligand-binding residues. The predictor was trained on individual chain sequences of a protein, based on their Uniprot IDs. For a fair comparison with BiRDS and to speed up prediction time on their webserver, the 1,889 unique chain sequences of the test set were filtered; sequences with length greater than 1,024 and sequences with sequence similarity greater than 25\% and over 80\% overlap with the SCRIBER training set and SC6K test set were removed. SCRIBER predictions of RNA-binding, DNA-binding and ligand-binding residue propensities on the final 521 sequences were averaged and considered for comparison. The Receiver Operating Characteristic (ROC) curve and the Precision-Recall (PR) curve of BiRDS on the full and reduced test set, and SCRIBER on the 521 sequences, is shown in Figure \ref{fig:test_roc_prc}.
 
-All the currently available methods for predicting the binding site of a protein, based on sequence, predict the site only for a specific set of ligands, while our model predicts the most ligandable binding site irrespective of the ligand. Hence, there is no available method of comparison with our model for the sequence-based prediction of binding residues on the sc-PDB\cite{desaphy2015sc} dataset.
-
-As a simple way to test the effectiveness of our model against DeepCSeqSite's model, we followed two approaches:
-\begin{enumerate}
-    \item Run the trained DeepCSeqSite model on our test set
-    \item Reimplement DeepCSeqSite model architecture, train on our dataset, and then test
-\end{enumerate}
-
-Both approaches failed to provide good results, with approach one providing an MCC score of 0.05 and approach two providing an MCC score of 0.1. The failure in approach one could be due to the difference in the method for generating the MSAs.
-
-A variety of deep learning models such as Complementary GANs, stacked BiLSTMs, and TAPE protein embeddings were used for training as a means to improve the predictions. Features, such as backbone angles, secondary structure, solvent accessibility and contact number, generated using SPOT-1D \cite{hanson2018accurate} were also tried as features. None of them provided any significant improvement over vanilla ResNets and simple features. Instead, they added unnecessary, additional computational costs.
-
-% \subsection{Experiments}
-
-% TAPE Embeddings (Both embeddings) and as a downstream task
-
-% Complementary GAN to try and solve the imbalance
-
-% Using SPOT-1D features
-
-% BiLSTMs, UNet, Transformers
-
-% Window of features using predicted contact maps
-
-% Training on chains separately
-
-\quad Some case studies were undertaken to show that the model performs as expected, but the metrics do not rate it well due to limitations of the dataset. The aggregated predictions of the models on the test set were mapped back to the three-dimensional structure of the protein-ligand complex to see how good the predictions are. The 3-D structures were generated using 3Dmol.js\cite{rego20153dmol}. In the following examples, the colour red indicates an incorrect prediction of the amino acid as a binding residue. Blue indicates an amino acid that is a binding residue but was not predicted as binding by the model. Green indicates an amino acid that was correctly predicted as binding.
-
-In Figure \ref{fig:5ymx}, it looks like the model is mispredicting everything for 5YMX\cite{galicia2019mgla}, but it is predicting another binding site of the protein. The sc-PDB\cite{desaphy2015sc} dataset was generated through a series of filters, and the residues surrounding the most buried ligand was selected to be the most ligandable binding site. This selection, unfortunately, is a flaw of the dataset and the method used for predictions. There is no right way to cover cases like these where the model needs to be penalised less when it predicts a binding site that is not the most ligandable binding site. Hence, the evaluation metrics used will generally give an abysmal score for such cases.
-\begin{figure}
+\begin{figure}%
     \centering
-    \noindent\includegraphics[scale=0.4]{5ymx.png}
-    \caption{\centering 5YMX - The model seems to be mispredicting the actual binding site (in blue), but is in fact, predicting another binding site of the protein (in red)}
-    \label{fig:5ymx}
-\end{figure}
-
-Figure \ref{fig:6hu9} shows 6HU9\cite{maldonado2021atomic}, where the model predicts individual binding sites of two proteins with the same sequence, but it finds it difficult to predict the binding site created due to the interaction between the two proteins. This may be due to the way the features are generated. It is not easy to generate features of the protein since the MSAs are generated for individual chains of a protein, not providing any information about the interaction between the chains. Due to the fewer samples containing a binding site between the interaction of protein chains, the model finds it difficult to learn the same.
-\begin{figure}
-    \centering
-    \noindent\includegraphics[scale=0.35]{6hu9.png}
-    \caption{\centering 6HU9 - The model is able to predict the individual binding site of the protein  (in red), but not the interaction binding site (in blue)}
-    \label{fig:6hu9}
-\end{figure}
-
-Figure \ref{fig:6pf6} shows 6PF6\cite{czyzyk2019structure}, where the model predicts the binding site with good accuracy. It can be seen that it predicts most of the residues around the binding site and also a couple more just outside the binding site. Since the two chains of the protein have the same sequence, the model predicts identical binding residues for both chains. sc-PDB selects only one binding site as the most active binding site, and therefore, only that site is used for calculating the metrics. The metrics do not do justice to these types of predictions and score the model very poorly, even though it is doing very well.
-\begin{figure}
-    \centering
-    \noindent\includegraphics[scale=0.4]{6pf6.png}
-    \caption{\centering 6PF6 - The model predicts the binding site correctly, but due to the presence of the same chains in the protein, it predicts both the binding sites (in green and red)}
-    \label{fig:6pf6}
+    \subfloat{{ \noindent\includegraphics[width=0.5\textwidth]{test_roc.png} \label{fig:test_roc}}}%
+    \subfloat{{ \noindent\includegraphics[width=0.5\textwidth]{test_prc.png} \label{fig:test_prc}}}%
+    \vspace{1em}
+    \caption{\centering ROC and PR curve of BiRDS and SCRIBER on the test sets}%
+    \label{fig:test_roc_prc}%
 \end{figure}
 
 \newpage
+A variety of more complex deep-learning models were trained to improve predictions. As described in the paper by \citeauthor{cui2020conan}, a Complementary Generative Adversarial Network (CGAN) was implemented to mitigate the substantial imbalance in the prediction classes. However, a simple weighted binary cross-entropy loss function worked better than a CGAN with focal loss. A Deep Bidirectional Encoder Representations from Transformers (BERT)\cite{devlin2018bert}, a state-of-the-art model for token classification problems in NLP, was also implemented. It performed on par with the current BiRDS model but led to longer training times. Several different features to improve performance were also tried. Task Assessing Protein Embeddings (TAPE)\cite{rao2019evaluating} provided trained deep learning models which produced an embedding representation of the protein sequence input. The trained TAPE transformer model was added along with BiRDS architecture, but the training could not proceed due to a large-sized feature map and insufficient GPU memory. SPOT-1D\cite{hanson2019improving} is a sequence-based predictor for predicting secondary structure, backbone angles, solvent accessibility and contact numbers by using predicted contact maps. These predictions were used as inputs to BiRDS but did not provide any improvement over the features extracted from Deep MSAs. An ablation study to identify the importance of the features currently used by BiRDS can be found in Supplementary Information.
+
+\quad Some case studies were undertaken to show that the model's performance is good, but the metrics do not rate it well due to the limitations of the dataset. The aggregated predictions of the ten models on the test set were mapped back to the three-dimensional structure of the protein-ligand complex. 3Dmol.js\cite{rego20153dmol}, a modern, object-oriented Javascript library for visualising molecular data, was used to visualise the protein's surface, with coloured residues representing the predicted and actual binding residues. In the following examples, red indicates an incorrect prediction of a non-binding residue as binding, blue indicates a binding residue that was not predicted as binding, and green indicates a correct prediction.
+
+\newpage
+In Figure \ref{fig:6fad}, BiRDS seems to incorrectly predict all the binding residues for 6FAD\cite{tunnicliffe2019molecular}. However, it is predicting another binding site of the protein. The sc-PDB\cite{desaphy2015sc} dataset was generated through a series of filters, and the residues surrounding the most buried ligand was selected to be the most ligandable binding site. This selection, unfortunately, is a flaw of the dataset and the method used for predictions. There is no right way to cover cases like these where the model needs to be penalised less when it predicts a binding site that is not the most ligandable binding site. Hence, the evaluation metrics will generally give an abysmal score for such cases.
+\begin{figure}
+    \centering
+    \noindent\includegraphics[width=0.6\textwidth]{6fad.png}
+    \caption{\centering 6FAD - BiRDS seems to be incorrectly predicting the actual binding site (in blue), when in reality, it is predicting another binding site of the protein (in red)}
+    \label{fig:6fad}
+\end{figure}
+
+Figure \ref{fig:6isp} shows 6ISP\cite{cen2019artificial}, where BiRDS predicts individual binding sites of two same sequence chains of the protein. However, the model finds it challenging to predict the binding site created due to the interaction between the two chains. This may likely be due to the way the input features are generated. A simple concatenation of the features of individual chains to generate the protein sequence features is insufficient as it does not provide any information about the interaction among the multiple chains. These interactions scarcely occur in the training set, making it hard for BiRDS to learn.
+\begin{figure}
+    \centering
+    \noindent\includegraphics[width=0.6\textwidth]{6isp.png}
+    \caption{\centering 6ISP - BiRDS is able to predict the binding site of individual chains (in red), but not the binding site formed due to the interaction between chains (in blue)}
+    \label{fig:6isp}
+\end{figure}
+
+\begin{figure}
+    \centering
+    \noindent\includegraphics[width=0.6\textwidth]{6s2j.png}
+    \caption{\centering 6S2J - BiRDS predicts the binding site correctly, but due to the presence of same sequence protein chains, it predicts both the binding sites (in green and red)}
+    \label{fig:6s2j}
+\end{figure}
+
+Figure \ref{fig:6s2j} shows 6S2J\cite{teixeira2019activation}, where BiRDS predicts the binding site of a protein chain with high precision. It predicts most of the binding residues surrounding the ligand and a couple of outliers. However, the two protein chains have the same sequence, causing BiRDS to predict similar binding sites for both. Since sc-PDB selects only one active binding site during its selection process, the model predictions are compared against a single site for metrics calculation. The metrics do not do justice to these types of predictions, penalising BiRDS with a poor score.
+
 \section{Conclusion}
-In this study, a ResNet was used to predict the most active binding site of a protein. The sc-PDB\cite{desaphy2015sc} dataset contained data of the most ligandable binding site of a protein. MSAs were generated for all protein chains in the dataset using DeepMSA, and features such as Position-Specific Scoring Matrix, Secondary Structure and Solvent Accessibility were calculated. A new test set, SC6K, considering proteins in the last three years, was made using the same filters used to create the sc-PDB dataset. The individual features of the protein chains were concatenated, and BiRDS was trained using 10-fold cross-validation. BiRDS can predict the binding site of a protein fairly accurately using only the sequence information, although it fails to predict the binding site formed between protein chains due to limited data. In drug design, it becomes crucial to determine the pocket where the drug molecule binds with the protein. BiRDS (our method) can be used for early and quick determination of the binding site before the availability of the protein structure.
+In this study, a deep ResNet was implemented to predict a protein's most active binding site. A training set of ten folds was derived from the sc-PDB(v. 2017)\cite{desaphy2015sc} database containing data of a protein's most ligandable binding site. A novel test set SC6K was constructed from protein-ligand complexes of the PDB from January 2018 to February 2020. MSAs were generated for all unique protein chains in both the datasets using DeepMSA, and features such as Position-Specific Scoring Matrix, Secondary Structure and Solvent Accessibility were extracted. The individual features of the chains were concatenated to form the protein feature map, and BiRDS was trained using 10-fold cross-validation and a weighted binary cross-entropy loss function. BiRDS can accurately predict the most active binding site of a protein using only sequence information. It outperforms SCRIBER, a sequence-based protein-binding site predictor and performs on par with Kalasanty, a 3D-structure-based method. It becomes crucial to determine the pocket where the drug molecule binds with the protein in drug design. BiRDS can be used for early and quick determination of the binding site before the availability of the protein structure.
 
 \section{Data and Software Availability}
-The method implementation, data and pretrained models can be found at \newline
+The source code has been written in a modular fashion using PyTorch Lightning\cite{falcon2019pytorch}. The method implementation, data and pretrained models can be found at \newline
 \href{https://github.com/devalab/BiRDS}{https://github.com/devalab/BiRDS}.
 
 \begin{acknowledgement}

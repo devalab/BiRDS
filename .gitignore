@@ -58,4 +58,17 @@ manuscript/achemso-demo.out
 manuscript/achemso-demo.log
 manuscript/achemso-demo.synctex.gz
 
+manuscript/supplementary.aux
+manuscript/supplementary.bbl
+manuscript/supplementary.blg
+manuscript/supplementary.fdb_latexmk
+manuscript/supplementary.fls
+manuscript/supplementary.lof
+manuscript/supplementary.lot
+manuscript/supplementary.toc
+manuscript/supplementary.out
+manuscript/supplementary.log
 manuscript/supplementary.synctex.gz
+
+manuscript/marked.pdf
+manuscript/unmarked.pdf

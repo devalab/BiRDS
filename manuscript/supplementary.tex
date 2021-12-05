@@ -3,6 +3,7 @@
 \usepackage{hyperref}
 \usepackage{graphicx}
 \usepackage{longtable}
+\usepackage{subfig}
 \usepackage{array}
 
 \graphicspath{ {./resources/} }
@@ -27,6 +28,8 @@
 \tableofcontents
 
 \listoftables
+
+\listoffigures
 
 \pagenumbering{arabic}
 
@@ -58,8 +61,30 @@ Matthews Correlation Coefficient: ${MCC} = \frac{TP \times TN - FP \times FN}{\s
 \subsection{MCC}
 \quad The Matthew's Correlation varies from $[-1, +1]$, with $+1$ representing a perfect prediction, 0 representing no better than a random prediction and -1 representing total disagreement between the prediction and the observation.
 
-\subsection{DCC}
-DCC is the distance between the centre of the predicted binding pocket and the centre of the actual binding pocket. It is commonly used for evaluating 3D-structure based models. The success rate of DCC is defined as the fraction of predictions below a given threshold. Predicted pockets with DCC below 4{\AA} are considered to be correctly located.
+
+% Different Resnet basic block input and output sizes, $d$ and $e$, were tested, but the values shared in the architecture were the most optimal in terms of faster training time and better metrics. Increasing/Decreasing the filter size of the convolutional layers either worsened the performance or lengthened the training time of the model with no additional benefit.
+
+
+% TODO: Update the below table and insert it here
+% \begin{table}
+%   \centering
+%   \begin{tabular}{| P{2.75cm} | P{2.75cm} | P{2.75cm} | P{2.75cm} | P{2.75cm} |}
+%       \hline
+%             & $N_{prot}$ & $N_{br}$ & $N_{nbr}$ & $P_{br}(\%)$ \\
+%       \hline
+%       Train & 16,450     & 589,329  & 8,725,043 & 6.33         \\
+%       % Valid & 1586       &          &           &              \\
+%       Test  & 2,464      & 86,230   & 1,345,646 & 6.02         \\
+%       \hline
+%   \end{tabular}
+%   \caption{\label{tab:dataset_summary} Summary of the dataset used for training and testing}
+%   \vspace{5 mm}
+%   \noindent $N_{prot}$ - Number of proteins \hfill $N_{br}$ - Total number of binding residues
+
+%   \vspace{3 mm}
+
+%   \noindent $N_{nbr}$ - Total number of non-binding residues \hfill $P_{br}(\%)$ - Percentage of binding residues
+% \end{table}
 
 % \newpage
 % \begin{center}
@@ -168,117 +193,129 @@ DCC is the distance between the centre of the predicted binding pocket and the c
 % \end{center}
 
 \begin{center}
-  \begin{table}[ht]
-    \centering
-    \begin{tabular}{|c|c|}
-      \hline
-      \textbf{Obseleted PDB IDs} & \textbf{Replacement PDB IDs} \\
-      \hline
-      1HWZ                       & 6DHD                         \\
-      1QY5                       & 6D28                         \\
-      1U0Y                       & 6D1X                         \\
-      2CMJ                       & 5YZH                         \\
-      2CMV                       & 5YZI                         \\
-      2PDT                       & 6CNY                         \\
-      3G07                       & 5UNA                         \\
-      3KWN                       & 5QC4                         \\
-      3LNS                       & 3LNS                         \\
-      3LV1                       & 3LV1                         \\
-      3MPE                       & 5QBY                         \\
-      3MVQ                       & 6DHL                         \\
-      3MW9                       & 6DHM                         \\
-      3N3N                       & 5SXQ                         \\
-      3Q9K                       & 6L9E                         \\
-      3QL6                       & 6LAQ                         \\
-      3TUW                       & 5ZGS                         \\
-      4DGO                       & 6QS5                         \\
-      4EGB                       & 6BI4                         \\
-      4GDC                       & 5VWT                         \\
-      4GDD                       & 5VWU                         \\
-      4KA6                       & 5SYI                         \\
-      4KG1                       & 5H5O                         \\
-      4KNZ                       & 6NNR                         \\
-      4N3L                       & 6EO8                         \\
-      4N7A                       & 6LF7                         \\
-      4NT3                       & 6LCO                         \\
-      4NZE                       & 6EO9                         \\
-      4OA9                       & 5LPV                         \\
-      4OAC                       & 5LPB                         \\
-      4OTW                       & 6OP9                         \\
-      4P7P                       & 5I0K                         \\
-      4PT0                       & 5GTK                         \\
-      4PT3                       & 5GTL                         \\
-      4UTD                       & 6CPF                         \\
-      4WBN                       & 6I5C                         \\
-      4Y9Q                       & 5MF5                         \\
-      5AAJ                       & 5OMO                         \\
-      5CTO                       & 6J63                         \\
-      5LI5                       & 5LX2                         \\
-      \hline
-    \end{tabular}
-    \caption{Train Set - Obseleted PDB IDs along with replacement PDB IDs}
-    \label{table:trainobseleted}
-  \end{table}
+    \begin{table}[ht]
+        \centering
+        \begin{tabular}{|c|c|}
+            \hline
+            \textbf{Obsoleted PDB IDs} & \textbf{Replacement PDB IDs} \\
+            \hline
+            1HWZ                       & 6DHD                         \\
+            1QY5                       & 6D28                         \\
+            1U0Y                       & 6D1X                         \\
+            2CMJ                       & 5YZH                         \\
+            2CMV                       & 5YZI                         \\
+            2PDT                       & 6CNY                         \\
+            3G07                       & 5UNA                         \\
+            3KWN                       & 5QC4                         \\
+            3LNS                       & 3LNS                         \\
+            3LV1                       & 3LV1                         \\
+            3MPE                       & 5QBY                         \\
+            3MVQ                       & 6DHL                         \\
+            3MW9                       & 6DHM                         \\
+            3N3N                       & 5SXQ                         \\
+            3Q9K                       & 6L9E                         \\
+            3QL6                       & 6LAQ                         \\
+            3TUW                       & 5ZGS                         \\
+            4DGO                       & 6QS5                         \\
+            4EGB                       & 6BI4                         \\
+            4GDC                       & 5VWT                         \\
+            4GDD                       & 5VWU                         \\
+            4KA6                       & 5SYI                         \\
+            4KG1                       & 5H5O                         \\
+            4KNZ                       & 6NNR                         \\
+            4N3L                       & 6EO8                         \\
+            4N7A                       & 6LF7                         \\
+            4NT3                       & 6LCO                         \\
+            4NZE                       & 6EO9                         \\
+            4OA9                       & 5LPV                         \\
+            4OAC                       & 5LPB                         \\
+            4OTW                       & 6OP9                         \\
+            4P7P                       & 5I0K                         \\
+            4PT0                       & 5GTK                         \\
+            4PT3                       & 5GTL                         \\
+            4UTD                       & 6CPF                         \\
+            4WBN                       & 6I5C                         \\
+            4Y9Q                       & 5MF5                         \\
+            5AAJ                       & 5OMO                         \\
+            5CTO                       & 6J63                         \\
+            5LI5                       & 5LX2                         \\
+            \hline
+        \end{tabular}
+        \caption{Train Set - Obsoleted PDB IDs along with replacement PDB IDs}
+        \label{table:trainobsoleted}
+    \end{table}
 \end{center}
 \clearpage
 
 \begin{center}
-  \begin{table}[ht]
-    \centering
-    \begin{tabular}{|c c c c c|}
-      \hline
-      5MWR & 5X8O & 6C2L & 6ELH & 6I2L \\
-      5MYH & 5YV4 & 6C2P & 6EMC & 6IQ7 \\
-      5MZ9 & 5Z3T & 6C38 & 6EME & 6IQ8 \\
-      5N7R & 5Z4I & 6CB4 & 6ESO & 6IRM \\
-      5NWO & 5ZBV & 6CO0 & 6ETX & 6IRN \\
-      5OLI & 5ZD5 & 6CSY & 6FJR & 6JLW \\
-      5UF9 & 5ZD7 & 6CU4 & 6FMM & 6JLX \\
-      5UUR & 6A5V & 6D4J & 6FO4 & 6JU2 \\
-      5VB1 & 6ABB & 6D5I & 6FOT & 6JU3 \\
-      5VB4 & 6ABD & 6DM2 & 6FOU & 6MPU \\
-      5VFL & 6ABE & 6DTJ & 6FOV & 6MSZ \\
-      5VG5 & 6ABF & 6DU1 & 6FPE & 6N3T \\
-      5WVQ & 6ABG & 6DUA & 6FQC & 6NLC \\
-      5WVS & 6BW7 & 6DX6 & 6G9Y & 6NLD \\
-      5WVT & 6C0C & 6E5O & 6GJX & 6NPG \\
-      5WW1 & 6C2E & 6E79 & 6GKP & 6NXH \\
-      5WW2 & 6C2J & 6E7A & 6H7K & 6UHD \\
-      5WWA & 6C2K & 6EDO & 6HBO &      \\
-      \hline
-    \end{tabular}
-    \caption{Test Set Removed - Obseleted PDBs}
-    \label{table:testobseleted}
-  \end{table}
+    \begin{table}[ht]
+        \centering
+        \begin{tabular}{|c c c c c|}
+            \hline
+            5MWR & 5X8O & 6C2L & 6ELH & 6I2L \\
+            5MYH & 5YV4 & 6C2P & 6EMC & 6IQ7 \\
+            5MZ9 & 5Z3T & 6C38 & 6EME & 6IQ8 \\
+            5N7R & 5Z4I & 6CB4 & 6ESO & 6IRM \\
+            5NWO & 5ZBV & 6CO0 & 6ETX & 6IRN \\
+            5OLI & 5ZD5 & 6CSY & 6FJR & 6JLW \\
+            5UF9 & 5ZD7 & 6CU4 & 6FMM & 6JLX \\
+            5UUR & 6A5V & 6D4J & 6FO4 & 6JU2 \\
+            5VB1 & 6ABB & 6D5I & 6FOT & 6JU3 \\
+            5VB4 & 6ABD & 6DM2 & 6FOU & 6MPU \\
+            5VFL & 6ABE & 6DTJ & 6FOV & 6MSZ \\
+            5VG5 & 6ABF & 6DU1 & 6FPE & 6N3T \\
+            5WVQ & 6ABG & 6DUA & 6FQC & 6NLC \\
+            5WVS & 6BW7 & 6DX6 & 6G9Y & 6NLD \\
+            5WVT & 6C0C & 6E5O & 6GJX & 6NPG \\
+            5WW1 & 6C2E & 6E79 & 6GKP & 6NXH \\
+            5WW2 & 6C2J & 6E7A & 6H7K & 6UHD \\
+            5WWA & 6C2K & 6EDO & 6HBO &      \\
+            \hline
+        \end{tabular}
+        \caption{Test Set Removed - Obsoleted PDBs}
+        \label{table:testobsoleted}
+    \end{table}
 \end{center}
 \clearpage
 
 \begin{center}
-  \begin{table}[ht]
-    \centering
-    \begin{tabular}{|c|}
-      \hline
-      6DC9 \\
-      6DCA \\
-      6EOD \\
-      6FE0 \\
-      6FE1 \\
-      6IEY \\
-      6MQC \\
-      6MQE \\
-      6N16 \\
-      6NCP \\
-      6RUL \\
-      6SNC \\
-      6SND \\
-      6SNE \\
-      \hline
-    \end{tabular}
-    \caption{Test Set Removed - Reindexing Errors}
-    \label{table:testreindex}
-  \end{table}
+    \begin{table}[ht]
+        \centering
+        \begin{tabular}{|c|}
+            \hline
+            6DC9 \\
+            6DCA \\
+            6EOD \\
+            6FE0 \\
+            6FE1 \\
+            6IEY \\
+            6MQC \\
+            6MQE \\
+            6N16 \\
+            6NCP \\
+            6RUL \\
+            6SNC \\
+            6SND \\
+            6SNE \\
+            \hline
+        \end{tabular}
+        \caption{Test Set Removed - Reindexing Errors}
+        \label{table:testreindex}
+    \end{table}
 \end{center}
 \clearpage
+
+\begin{figure}[h]%
+    \centering
+    \subfloat[\centering No PSSM and IC features]{{ \label{fig:no_pssm_cm} \includegraphics[width=0.45\textwidth]{no_pssm_cm.png} }}
+    \qquad
+    \subfloat[\centering No Embedding features]{{ \label{fig:no_embeddings_cm} \includegraphics[width=0.45\textwidth]{no_embeddings_cm.png} }}
+    \subfloat[\centering No SS3 and RSA features]{{ \label{fig:no_ss3_rsa_cm} \includegraphics[width=0.45\textwidth]{no_ss3_rsa_cm.png} }}
+    \vspace{1em}
+    \caption{\centering Confusion matrix of the Ablation Study on the reduced test set}%
+    \label{fig:test_cm}%
+\end{figure}
+
 
 % \begin{center}
 %   \begin{table}[ht]
@@ -311,7 +348,7 @@ DCC is the distance between the centre of the predicted binding pocket and the c
 %   \end{table}
 % \end{center}
 
-% \caption{List of obseleted PDB IDs in the test set}
+% \caption{List of obsoleted PDB IDs in the test set}
 
 % \begin{center}
 %     \begin{table}[ht]
@@ -342,62 +379,62 @@ DCC is the distance between the centre of the predicted binding pocket and the c
 % \begin{figure}
 %     \caption{Test curves of the 10 classification models on their corresponding validation sets during 10-fold cross validation reporting (a) Accuracy, (b) Area under the curve - Receiver operating characteristic (AUC-ROC).}
 %     \label{fig:Classification_cross_val_SI}
-%      \centering
-%      \begin{subfigure}[b]{\textwidth}
-%          \begin{subfigure}[b]{0.485\textwidth}
-%          \centering
-%          \includegraphics[width=\textwidth]{figures/suppl/fold1_acc.png}
-%      \end{subfigure}
-%      \hfill
-%      \begin{subfigure}[b]{0.485\textwidth}
-%          \centering
-%          \includegraphics[width=\textwidth]{figures/suppl/fold1_auc.png}
-%      \end{subfigure}
-%      \caption{Fold 1}
-%      \label{fig:fold1}
-%      \end{subfigure}
-%      \hfill
-%      \begin{subfigure}[b]{\textwidth}
-%      \begin{subfigure}[b]{0.485\textwidth}
-%          \centering
-%          \includegraphics[width=\textwidth]{figures/suppl/fold2_acc.png}
-%      \end{subfigure}
-%      \hfill
-%      \begin{subfigure}[b]{0.485\textwidth}
-%          \centering
-%          \includegraphics[width=\textwidth]{figures/suppl/fold2_auc.png}
-%      \end{subfigure}     
-%      \hfill
-%      \caption{Fold 2}
-%      \label{fig:fold2}
-%      \end{subfigure}
-%      \begin{subfigure}[b]{\textwidth}
-%      \begin{subfigure}[b]{0.485\textwidth}
-%          \centering
-%          \includegraphics[width=\textwidth]{figures/suppl/fold3_acc.png}
-%      \end{subfigure}
-%      \hfill
-%      \begin{subfigure}[b]{0.485\textwidth}
-%          \centering
-%          \includegraphics[width=\textwidth]{figures/suppl/fold3_auc.png}
-%      \end{subfigure}
-%      \caption{Fold 3}
-%      \label{fig:fold3}
-%      \end{subfigure}
-%      \hfill
-%      \begin{subfigure}[b]{\textwidth}
-%      \begin{subfigure}[b]{0.485\textwidth}
-%          \centering
-%          \includegraphics[width=\textwidth]{figures/suppl/fold4_acc.png}
-%      \end{subfigure}
-%      \hfill
-%      \begin{subfigure}[b]{0.485\textwidth}
-%          \centering
-%          \includegraphics[width=\textwidth]{figures/suppl/fold4_auc.png}
-%      \end{subfigure}
-%      \caption{Fold 4}
-%      \label{fig:fold4}
-%      \end{subfigure}
+%     \centering
+%     \begin{subfigure}[b]{\textwidth}
+%         \begin{subfigure}[b]{0.485\textwidth}
+%             \centering
+%             \includegraphics[width=\textwidth]{figures/suppl/fold1_acc.png}
+%         \end{subfigure}
+%         \hfill
+%         \begin{subfigure}[b]{0.485\textwidth}
+%             \centering
+%             \includegraphics[width=\textwidth]{figures/suppl/fold1_auc.png}
+%         \end{subfigure}
+%         \caption{Fold 1}
+%         \label{fig:fold1}
+%     \end{subfigure}
+%     \hfill
+%     \begin{subfigure}[b]{\textwidth}
+%         \begin{subfigure}[b]{0.485\textwidth}
+%             \centering
+%             \includegraphics[width=\textwidth]{figures/suppl/fold2_acc.png}
+%         \end{subfigure}
+%         \hfill
+%         \begin{subfigure}[b]{0.485\textwidth}
+%             \centering
+%             \includegraphics[width=\textwidth]{figures/suppl/fold2_auc.png}
+%         \end{subfigure}
+%         \hfill
+%         \caption{Fold 2}
+%         \label{fig:fold2}
+%     \end{subfigure}
+%     \begin{subfigure}[b]{\textwidth}
+%         \begin{subfigure}[b]{0.485\textwidth}
+%             \centering
+%             \includegraphics[width=\textwidth]{figures/suppl/fold3_acc.png}
+%         \end{subfigure}
+%         \hfill
+%         \begin{subfigure}[b]{0.485\textwidth}
+%             \centering
+%             \includegraphics[width=\textwidth]{figures/suppl/fold3_auc.png}
+%         \end{subfigure}
+%         \caption{Fold 3}
+%         \label{fig:fold3}
+%     \end{subfigure}
+%     \hfill
+%     \begin{subfigure}[b]{\textwidth}
+%         \begin{subfigure}[b]{0.485\textwidth}
+%             \centering
+%             \includegraphics[width=\textwidth]{figures/suppl/fold4_acc.png}
+%         \end{subfigure}
+%         \hfill
+%         \begin{subfigure}[b]{0.485\textwidth}
+%             \centering
+%             \includegraphics[width=\textwidth]{figures/suppl/fold4_auc.png}
+%         \end{subfigure}
+%         \caption{Fold 4}
+%         \label{fig:fold4}
+%     \end{subfigure}
 % \end{figure}
 
 % \begin{figure}\ContinuedFloat

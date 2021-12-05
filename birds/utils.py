@@ -129,3 +129,21 @@ def create_info_file(dataset_dir):
     with open(os.path.join(dataset_dir, "info.txt"), "w") as f:
         f.write("\t".join(["pdb_id", "structure", "chain", "sequence", "binding_residues\n"]))
         f.writelines(lines)
+
+
+def are_features_available(dataset_dir, file):
+    prep_dir = os.path.join(dataset_dir, "msa")
+    with open(file, "r") as f:
+        lines = [line.strip().split()[0] for line in f.readlines()]
+
+    for line in lines:
+        pis, chain = line.split("/")
+        pre = os.path.join(prep_dir, pis)
+        chain = chain[:-1]
+        pssm = os.path.join(pre, "pssm_" + chain + ".npy")
+        ss2 = os.path.join(pre, "ss2_" + chain + ".npy")
+        solv = os.path.join(pre, "solv_" + chain + ".npy")
+        if not os.path.exists(pssm) or not os.path.exists(ss2) or not os.path.exists(solv):
+            return False
+
+    return True

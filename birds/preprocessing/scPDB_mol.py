@@ -65,7 +65,7 @@ for pdb_id_struct in sorted(os.listdir(raw_dir)):
 # Download NWalign.py to use Needlman Wunsch algorithm to align sequences
 # https://zhanglab.ccmb.med.umich.edu/NW-align/NWalign.py (Make small changes for Python3 compatibility)
 # 4egb_5 is an obseleted PDB and hence has chain E, had to manually add E to sequence.fasta
-from birds.utils.mol2 import Mol2
+from birds.utilities.mol2 import Mol2
 from tqdm.auto import tqdm
 
 for pdb_id_struct in tqdm(sorted(os.listdir(raw_dir))):

@@ -27,9 +27,10 @@ colours = [
     "tab:olive",
     "tab:cyan",
 ]
+plt.rcParams.update({"font.size": 20})
 
 
-def dcc_figure(values):
+def dcc_figure(values, labels=None):
     len_values = len(values)
     values = np.nan_to_num(values, nan=20000, posinf=20000, neginf=20000)
     figure = plt.figure(figsize=(12, 12))
@@ -38,8 +39,12 @@ def dcc_figure(values):
     for value in values:
         y.append(np.array([(value <= el).sum() / len(value) * 100 for el in x]))
     for i, colour in enumerate(colours[:len_values]):
+        if labels:
+            label = labels[i]
+        else:
+            label = "Fold " + str(i + 1)
         y_new = gaussian_filter1d(y[i], sigma=5)
-        plt.plot(x, y_new, colour, label="Fold " + str(i + 1))
+        plt.plot(x, y_new, colour, label=label)
     plt.legend()
     plt.xticks(np.arange(0, 21, 1))
     plt.yticks(np.arange(0, 101, 5))
@@ -49,35 +54,39 @@ def dcc_figure(values):
     return figure
 
 
-def roc_figure(fprs, tprs, areas):
+def roc_figure(fprs, tprs, areas, labels=None):
     len_values = len(fprs)
     figure = plt.figure(figsize=(12, 12))
     lw = 2
     for i, colour in enumerate(colours[:len_values]):
+        if labels:
+            label = labels[i]
+        else:
+            label = "Fold " + str(i + 1)
         tpr = gaussian_filter1d(tprs[i], sigma=5)
         plt.plot(
             fprs[i],
             tpr,
             colour,
             lw=lw,
-            label="ROC curve (Fold %d) (area = %0.2f)" % (i + 1, areas[i]),
+            label="%s (area = %0.2f)" % (label, areas[i]),
         )
     plt.plot([0, 1], [0, 1], color="navy", lw=lw, linestyle="--")
     plt.xlim([0.0, 1.01])
     plt.ylim([0.0, 1.01])
     plt.xlabel("False Positive Rate")
     plt.ylabel("True Positive Rate")
-    plt.title("ROC curve")
+    plt.title("Receiver Operating Characteristics Curve")
     plt.legend(loc="lower right")
     return figure
 
 
-def pr_figure(precisions, recalls, areas):
+def pr_figure(precisions, recalls, areas, labels=None):
     len_values = len(precisions)
     figure, ax = plt.subplots(figsize=(12, 12))
 
     f_scores = np.linspace(0.2, 0.8, num=4)
-    _, labels = [], []
+    _, f_labels = [], []
     for f_score in f_scores:
         x = np.linspace(0.01, 1)
         y = f_score * x / (2 * x - f_score)
@@ -85,22 +94,26 @@ def pr_figure(precisions, recalls, areas):
         plt.annotate("f1={0:0.1f}".format(f_score), xy=(0.9, y[45] + 0.02))
 
     for i, colour in enumerate(colours[:len_values]):
+        if labels:
+            label = labels[i]
+        else:
+            label = "Fold " + str(i + 1)
         display = PrecisionRecallDisplay(recall=recalls[i], precision=precisions[i])
-        display.plot(ax=ax, name="PR curve (Fold %d) (area = %0.2f)" % (i + 1, areas[i]), color=colour)
+        display.plot(ax=ax, name="%s (area = %0.2f)" % (label, areas[i]), color=colour)
 
     # add the legend for the iso-f1 curves
-    handles, labels = display.ax_.get_legend_handles_labels()
+    handles, f_labels = display.ax_.get_legend_handles_labels()
     handles.extend([l])
-    labels.extend(["Iso-F1 curves"])
+    f_labels.extend(["Iso-F1 curves"])
     # set the legend and the axes
     ax.set_xlim([0.0, 1.0])
     ax.set_ylim([0.0, 1.05])
-    ax.legend(handles=handles, labels=labels, loc="best")
-    ax.set_title("Precision-Recall curve")
+    ax.legend(handles=handles, labels=f_labels, loc="best")
+    ax.set_title("Precision-Recall Curve")
     return figure
 
 
-def make_figure(key, values):
+def make_figure(key, values, labels=None):
     if key[2:] == "ConfusionMatrix":
         cm = [[0, 0], [0, 0]]
         for value in values:
@@ -111,13 +124,13 @@ def make_figure(key, values):
         return confusion_matrix_figure(np.array(cm), ["NBR", "BR"])
     elif key[2:] == "dcc":
         values = [[el.numpy() for el in value] for value in values]
-        return dcc_figure(values)
+        return dcc_figure(values, labels)
     elif key[2:] == "ROC":
         areas = [auc(value[0], value[1], reorder=True).detach().cpu().numpy() for value in values]
-        return roc_figure([value[0].numpy() for value in values], [value[1].numpy() for value in values], areas)
+        return roc_figure([value[0].numpy() for value in values], [value[1].numpy() for value in values], areas, labels)
     elif key[2:] == "PrecisionRecallCurve":
         areas = [auc(value[0], value[1], reorder=True) for value in values]
-        return pr_figure([value[0].numpy() for value in values], [value[1].numpy() for value in values], areas)
+        return pr_figure([value[0].numpy() for value in values], [value[1].numpy() for value in values], areas, labels)
     else:
         return plt.figure(figsize=(12, 12))
 
@@ -181,6 +194,8 @@ def load_nets_frozen(hparams, validate_one=False):
     test = False
     if not hasattr(hparams, "predict"):
         hparams.predict = False
+    if not hasattr(hparams, "use_ohe"):
+        hparams.use_ohe = True
     for i in range(10):
         print("Loading model for fold " + str(i))
         ckpt = get_best_ckpt(os.path.join(hparams.ckpt_dir, "fold_" + str(i), "checkpoints"))
@@ -199,6 +214,7 @@ def load_nets_frozen(hparams, validate_one=False):
             run_tests=(not hparams.validate and test),
             load_train_ds=hparams.validate,
             predict=hparams.predict,
+            use_ohe=hparams.use_ohe,
             input_size=47,
         )
         if hparams.gpus != 0:
@@ -245,8 +261,12 @@ def main(hparams):
 
     print("Aggregated metrics")
     print_metrics(fnl_metrics)
+    if not hparams.validate:
+        label = ["Test (Full)"]
+    else:
+        label = None
     for key, value in fnl_figure_metrics.items():
-        make_figure(key, value)
+        make_figure(key, value, label)
     plt.show(block=True)
 
 

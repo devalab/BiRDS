@@ -103,7 +103,10 @@ class scPDB(Dataset):
         if test:
             self.dataset_dir = os.path.join(hparams.data_dir, "2018_scPDB")
         elif predict:
-            self.dataset_dir = os.path.join(hparams.data_dir, "predict")
+            if hasattr(hparams, "dataset_dir"):
+                self.dataset_dir = os.path.abspath(hparams.dataset_dir)
+            else:
+                self.dataset_dir = os.path.join(hparams.data_dir, "predict")
         else:
             self.dataset_dir = os.path.join(hparams.data_dir, "scPDB")
             self.splits_dir = os.path.join(self.dataset_dir, "splits")
@@ -180,6 +183,8 @@ class scPDB(Dataset):
         labels = {}
         if self.test:
             info = "unique_info.txt"
+        elif self.predict:
+            info = "info.txt"
         else:
             info = "info.txt"
         with open(os.path.join(self.dataset_dir, info)) as f:

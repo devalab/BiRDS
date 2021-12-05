@@ -235,12 +235,12 @@ class PositionalEmbedding(torch.nn.Module):
 
 
 class TokenEmbedding(torch.nn.Embedding):
-    def __init__(self, vocab_size, embed_size=512):
+    def __init__(self, vocab_size, embed_size=32):
         super().__init__(vocab_size, embed_size, padding_idx=0)
 
 
 class SegmentEmbedding(torch.nn.Embedding):
-    def __init__(self, embed_size=512):
+    def __init__(self, embed_size=32):
         super().__init__(17, embed_size, padding_idx=0)
 
 

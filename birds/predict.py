@@ -1,7 +1,9 @@
 import os
 import re
 from argparse import ArgumentParser
-from shutil import copyfile
+from pytorch_lightning.utilities.parsing import AttributeDict
+
+# from shutil import copyfile
 from test import load_nets_frozen, predict
 
 from msa_generator.extract_features import extract_features_from_file
@@ -29,27 +31,37 @@ def main(hparams):
         ), "sequence.fasta is not present or is not a file"
         create_chains_from_sequence_fasta(pre, sequence_fasta)
 
-    unique = os.path.join(splits_dir, "unique")
-    make_unique_file(raw_dir, splits_dir)
-    generate_msas_from_file(hparams.dataset_dir, unique, hparams.cpus)
-    extract_features_from_file(hparams.dataset_dir, unique, hparams.cpus)
-    store_features_as_numpy(hparams.dataset_dir, unique)
-    create_info_file(hparams.dataset_dir)
-    copyfile(unique, os.path.join(hparams.dataset_dir, "unique"))
+    unique = os.path.join(hparams.dataset_dir, "no_one_msa_unique")
+
+    if not are_features_available(hparams.dataset_dir, unique):
+        make_unique_file(raw_dir, splits_dir)
+        generate_msas_from_file(hparams.dataset_dir, unique, hparams.cpus)
+        extract_features_from_file(hparams.dataset_dir, unique, hparams.cpus)
+        store_features_as_numpy(hparams.dataset_dir, unique)
+
+    # create_info_file(hparams.dataset_dir)
+    # copyfile(unique, os.path.join(hparams.dataset_dir, "unique"))
 
     hparams.data_dir = os.path.dirname(hparams.dataset_dir)
     hparams.predict = True
     nets = load_nets_frozen(hparams)
-    datamodule = Birds(nets[0].hparams)
+    dm_hparams = nets[0].hparams.copy()
+    dm_hparams.update(vars(hparams))
+    dm_hparams = AttributeDict(dm_hparams)
+    dm_hparams.data_dir = os.path.dirname(hparams.dataset_dir)
+    dm_hparams.predict = True
+    print(dm_hparams)
+    datamodule = Birds(dm_hparams)
 
     print("Running models on the predict set")
     test_dl = datamodule.test_dataloader()
     device = nets[0].device
     predictions = []
+    logits = []
     for _, batch in tqdm(enumerate(test_dl)):
         data, meta = move_data_to_device(batch, device)
-        y_pred = predict(nets, data, meta)
-        y_pred = (y_pred >= nets[0].hparams.threshold).bool().detach().cpu().numpy()
+        logit = predict(nets, data, meta).detach().cpu().numpy()
+        y_pred = (logit >= nets[0].hparams.threshold).astype(bool)
         batch_size = len(meta["length"])
         for i in range(batch_size):
             piscs = meta["pisc"][i]
@@ -57,17 +69,30 @@ def main(hparams):
             cumulative = 0
             for j in range(len(piscs)):
                 label = "".join(["1" if el else "0" for el in y_pred[i][cumulative : cumulative + len(sequences[j])]])
+                propensity = " ".join(
+                    ["{h:.16f}".format(h=el.item()) for el in logit[i][cumulative : cumulative + len(sequences[j])]]
+                )
                 cumulative += len(sequences[j])
                 predictions.append([piscs[j], sequences[j], label])
-            predictions.append([])
+                logits.append([piscs[j], sequences[j], propensity])
+                predictions.append([])
+                logits.append([])
     # predictions = ["\t".join(line) + "\n" for line in predictions]
     predictions_file = os.path.join(hparams.dataset_dir, "predictions.txt")
+    logits_file = os.path.join(hparams.dataset_dir, "logits.txt")
     with open(predictions_file, "w") as f:
         for prediction in predictions:
             if prediction == []:
                 f.write("\n")
                 continue
             for el in prediction:
+                f.write(el + "\n")
+    with open(logits_file, "w") as f:
+        for logit in logits:
+            if logit == []:
+                f.write("\n")
+                continue
+            for el in logit:
                 f.write(el + "\n")
     print("Predictions written to", predictions_file)
 

@@ -1,11 +1,14 @@
+import itertools
+
 import matplotlib.pyplot as plt
 import numpy as np
 import torch
-from sklearn.metrics import PrecisionRecallDisplay, ConfusionMatrixDisplay
+from sklearn.metrics import PrecisionRecallDisplay
 from torch.nn.functional import binary_cross_entropy_with_logits
 from torchmetrics.functional import auc
 
 SMOOTH = 1e-6
+plt.rcParams.update({"font.size": 18})
 
 
 def confusion_matrix_figure(cm, class_names):
@@ -16,9 +19,33 @@ def confusion_matrix_figure(cm, class_names):
     cm (array, shape = [n, n]): a confusion matrix of integer classes
     class_names (array, shape = [n]): String names of the integer classes
     """
-    figure, ax = plt.subplots(figsize=(8, 8))
-    display = ConfusionMatrixDisplay(confusion_matrix=cm, display_labels=class_names)
-    display.plot(ax=ax, cmap="PuBu")
+    cm = cm.astype("int")
+    figure = plt.figure(figsize=(8, 8))
+    # Normalize the confusion matrix.
+    cmap = plt.cm.viridis
+    normalized = np.around(cm.astype("float") / cm.sum(axis=1)[:, np.newaxis], decimals=2)
+    plt.imshow(normalized, interpolation="nearest", cmap=cmap)
+    plt.title("Confusion matrix")
+    plt.colorbar()
+    tick_marks = np.arange(len(class_names))
+    plt.xticks(tick_marks, class_names, rotation=45)
+    plt.yticks(tick_marks, class_names)
+
+    # Use red text if squares are dark; otherwise black.
+    for i, j in itertools.product(range(cm.shape[0]), range(cm.shape[1])):
+        color = cmap(1.0) if normalized[i, j] < 0.5 else cmap(0.0)
+        plt.text(
+            j,
+            i,
+            str(normalized[i, j]) + "\n(" + str(cm[i, j]) + ")",
+            horizontalalignment="center",
+            verticalalignment="center",
+            color=color,
+        )
+
+    plt.tight_layout()
+    plt.ylabel("True label")
+    plt.xlabel("Predicted label")
     return figure
 
 
