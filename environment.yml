@@ -1,6 +1,7 @@
 name: birds
 
 channels:
+  - conda-forge
   - pytorch
   - defaults
   - openbabel
@@ -10,20 +11,20 @@ channels:
 dependencies:
   - cudatoolkit=10.2
   - pytorch=1.10.0
-  - torchvision=0.11.1
+  - torchvision=0.11.2
   - matplotlib
   - jupyter
-  - flake8
+  - flake8=4.0.1
   - biopython=1.78
   - rdkit=2019.09.3
-  - openbabel
+  - openbabel=2.4.1
   - scikit-learn=1.0.1
-  - flask
+  - flask=2.2.2
   - pip
   - pip:
-      - pytorch-lightning==1.5.0
+      - pytorch-lightning==1.5.10
       - lightning-bolts==0.4.0
       - torchmetrics==0.6.0
-      - xtarfile
+      - zstandard
       - black
       - rich

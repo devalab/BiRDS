@@ -1,18 +1,41 @@
+import gzip
 import os
+import shutil
+import sys
+import tarfile
 from argparse import ArgumentParser
 from glob import glob
+from urllib.error import URLError
+from urllib.request import urlopen, urlretrieve
 from zipfile import ZipFile
 
-import requests
-import sys
-import xtarfile
+import zstandard as zstd
 
 
 def decompress_file(file, ext):
     print("Extracting file", file)
     folder = os.path.dirname(file)
-    with xtarfile.open(file, "r:" + ext) as archive:
-        archive.extractall(folder)
+    if ext == "zst":
+        with open(file, 'rb') as compressed_file:
+            dctx = zstd.ZstdDecompressor()
+            with dctx.stream_reader(compressed_file) as reader:
+                with tarfile.open(fileobj=reader, mode='r|') as archive:
+                    archive.extractall(folder)
+    elif ext == "gz":
+        # Check if it's a tar.gz or just a gzip file
+        try:
+            with tarfile.open(file, "r:gz") as archive:
+                archive.extractall(folder)
+        except tarfile.ReadError:
+            # Handle plain gzip files
+            decompressed_file = os.path.splitext(file)[0]
+            with gzip.open(file, 'rb') as f_in:
+                with open(decompressed_file, 'wb') as f_out:
+                    shutil.copyfileobj(f_in, f_out)
+            print(f"Decompressed to {decompressed_file}")
+    else:
+        with tarfile.open(file, "r:" + ext) as archive:
+            archive.extractall(folder)
 
 
 def decompress_dataset_files(dataset_dir):
@@ -27,20 +50,29 @@ def download_file(dir, url):
     filepath = os.path.join(dir, filename)
     if not os.path.exists(filepath):
         print("Downloading", filename)
-        with open(filepath, "wb") as f:
-            response = requests.get(url, stream=True)
-            total_length = response.headers.get("content-length")
-            if total_length is None:
-                f.write(response.content)
-            else:
-                dl = 0
-                total_length = int(total_length)
-                for data in response.iter_content(chunk_size=4096):
-                    dl += len(data)
-                    f.write(data)
-                    done = int(50 * dl / total_length)
-                    sys.stdout.write("\r[%s%s]" % ("=" * done, " " * (50 - done)))
-                    sys.stdout.flush()
+        try:
+            with urlopen(url) as response, open(filepath, "wb") as out_file:
+                # Get total file size from headers
+                total_length = response.info().get("Content-Length")
+                if total_length is None:
+                    # Write file directly if no length header
+                    out_file.write(response.read())
+                else:
+                    # Stream and show progress bar
+                    dl = 0
+                    total_length = int(total_length)
+                    while True:
+                        chunk = response.read(4096)
+                        if not chunk:
+                            break
+                        dl += len(chunk)
+                        out_file.write(chunk)
+                        done = int(50 * dl / total_length)
+                        sys.stdout.write("\r[%s%s]" % ("=" * done, " " * (50 - done)))
+                        sys.stdout.flush()
+            print()  # Add a newline after the progress bar
+        except URLError as e:
+            print(f"Failed to download {url}: {e}")
     return filepath
 
 

@@ -132,6 +132,8 @@ def create_info_file(dataset_dir):
 
 
 def are_features_available(dataset_dir, file):
+    if not os.path.exists(file):
+        return False
     prep_dir = os.path.join(dataset_dir, "msa")
     with open(file, "r") as f:
         lines = [line.strip().split()[0] for line in f.readlines()]

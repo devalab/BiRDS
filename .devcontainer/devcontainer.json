@@ -1,0 +1,51 @@
+{
+    "name": "${localWorkspaceFolderBasename}",
+    "hostRequirements": {
+        "gpu": "optional"
+    },
+    "build": {
+        "dockerfile": "Dockerfile",
+        "context": ".."
+    },
+    "features": {
+        "ghcr.io/devcontainers/features/nvidia-cuda:1": {
+            "cudaVersion": "11.3"
+        },
+        "ghcr.io/mamba-org/devcontainer-features/micromamba:1": {
+            "envFile": "/tmp/environment.yml"
+        }
+    },
+    "remoteUser": "vscode",
+    "customizations": {
+        "vscode": {
+            "extensions": [
+                "ms-python.python",
+                "ms-toolsai.jupyter",
+                "ms-python.black-formatter",
+                "ms-python.isort"
+            ],
+            "settings": {
+                "[python]": {
+                    "editor.defaultFormatter": "ms-python.black-formatter"
+                },
+                "black-formatter.args": [
+                    "--line-length",
+                    "128"
+                ],
+            }
+        }
+    },
+    "workspaceFolder": "/home/vscode/${localWorkspaceFolderBasename}",
+    "mounts": [
+        {
+            "source": "${localEnv:HOME}/.ssh",
+            "target": "/home/vscode/.ssh",
+            "type": "bind"
+        },
+        {
+            "source": "${localWorkspaceFolder}",
+            "target": "/home/vscode/${localWorkspaceFolderBasename}",
+            "type": "bind"
+        }
+    ]
+}
